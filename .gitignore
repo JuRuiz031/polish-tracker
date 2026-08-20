@@ -25,6 +25,17 @@ dist-ssr
 
 # test output
 coverage
+test-results
+playwright-report
+playwright/.cache
+
+# env
+.env
+.env.local
+
+# backup script output (scripts/backup.py, BACKUP_DIR default)
+backups/
 
 __pycache__/
 *.pyc
+*.tsbuildinfo
