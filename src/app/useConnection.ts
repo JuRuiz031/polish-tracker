@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { GitHubRepository } from '../data/repositories/github';
+import { OfflineRepository } from '../data/repositories/offline';
 import { InMemoryRepository } from '../data/repositories/memory';
 import type { Repository } from '../data/repositories/types';
 import {
@@ -91,17 +92,40 @@ export function useConnection(): ConnectionState {
   }, []);
 
   /**
-   * One repository instance per connection.
+   * The repository, built asynchronously because the offline layer has to read this
+   * device's cached collection before anything can use it.
    *
-   * Rebuilt only when the connection actually changes — a new instance on every render
-   * would re-fetch the whole collection each time anything above it re-rendered, and
-   * `GitHubRepository` caches the file's SHA, so a fresh one mid-session would also lose
-   * the concurrency guard that stops two devices overwriting each other.
+   * It is state rather than a `useMemo` for exactly that reason — a memo cannot await —
+   * and the app must not mount the store until it resolves. React runs child effects
+   * before parent ones, so a repository handed down un-hydrated would have its `load()`
+   * called by StoreProvider first, find an empty cache, and show her an empty collection
+   * whenever she opened the app without signal.
+   *
+   * Rebuilt only when the connection actually changes. A fresh instance mid-session
+   * would drop the cached file SHA that stops two devices overwriting each other.
    */
-  const repository = useMemo<Repository | null>(() => {
-    if (mode === 'demo') return new InMemoryRepository();
-    if (mode === 'connected' && connection) return new GitHubRepository(toTarget(connection));
-    return null;
+  const [repository, setRepository] = useState<Repository | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (mode === 'demo') {
+      setRepository(new InMemoryRepository());
+      return;
+    }
+    if (mode === 'connected' && connection) {
+      void OfflineRepository.create(new GitHubRepository(toTarget(connection))).then(
+        (built) => {
+          if (!cancelled) setRepository(built);
+        },
+      );
+    } else {
+      setRepository(null);
+    }
+
+    return () => {
+      cancelled = true;
+    };
   }, [mode, connection]);
 
   return { mode, repository, hasConnectedBefore, connect, exploreDemo, reset };

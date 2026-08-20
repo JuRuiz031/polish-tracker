@@ -2,8 +2,10 @@ import { BrowserRouter, NavLink, Navigate, Route, Routes } from 'react-router';
 import { StoreProvider } from './store';
 import { useStore } from './storeContext';
 import { useConnection, type ConnectionMode } from './useConnection';
+import type { Repository } from '../data/repositories/types';
 import { ConnectScreen } from '../features/setup/ConnectScreen';
 import { Toaster } from '../ui/Toaster';
+import { SyncStatus } from '../ui/SyncStatus';
 import { Button, EmptyState } from '../ui/primitives';
 import { Icon, type IconName } from '../ui/Icon';
 import { TonightScreen } from '../features/tonight/TonightScreen';
@@ -39,7 +41,11 @@ export default function App() {
   // Reading IndexedDB is fast but not instant, and rendering the setup screen for one
   // frame before discovering she is already connected would flash a "paste your key"
   // prompt at someone who has used the app for a year.
-  if (mode === 'loading') {
+  //
+  // The second condition waits for the repository to finish reading this device's cached
+  // collection. Mounting the store before that would have it load from an empty cache,
+  // so opening the app without signal would show an empty collection instead of her data.
+  if (mode === 'loading' || ((mode === 'connected' || mode === 'demo') && !repository)) {
     return (
       <div className="loading" role="status">
         <span className="loading__dot" />
@@ -69,13 +75,21 @@ export default function App() {
     // cannot leave the seeded collection on screen over her real data.
     <StoreProvider key={mode} repository={repository ?? undefined}>
       <BrowserRouter>
-        <Shell mode={mode} onReconnect={reset} />
+        <Shell mode={mode} onReconnect={reset} repository={repository} />
       </BrowserRouter>
     </StoreProvider>
   );
 }
 
-function Shell({ mode, onReconnect }: { mode: ConnectionMode; onReconnect: () => void }) {
+function Shell({
+  mode,
+  onReconnect,
+  repository,
+}: {
+  mode: ConnectionMode;
+  onReconnect: () => void;
+  repository: Repository | null;
+}) {
   const { ready, error } = useStore();
 
   return (
@@ -109,6 +123,7 @@ function Shell({ mode, onReconnect }: { mode: ConnectionMode; onReconnect: () =>
       </nav>
 
       <main className="app__main" id="main">
+        <SyncStatus repository={repository} />
         {!ready ? (
           <div className="loading" role="status">
             <span className="loading__dot" />

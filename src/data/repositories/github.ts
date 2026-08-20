@@ -229,6 +229,25 @@ export class GitHubRepository implements Repository {
     return updated;
   }
 
+  /**
+   * Replace the stored collection wholesale.
+   *
+   * The offline layer's push. It exists because reconciliation happens locally — the
+   * device merges what it has with what the repository has and arrives at one answer —
+   * and what comes back is a whole collection rather than a sequence of edits to replay.
+   *
+   * It looks alarming and is not: it goes through the same `commit()` as everything
+   * else, so it is still validated before sending, still guarded by the file's SHA, and
+   * still merges rather than clobbers if the repository moved underneath it.
+   */
+  async replaceAll(next: Snapshot, message: string): Promise<void> {
+    await this.commit(message, (data) => {
+      data.polish = next.polish.map((row) => ({ ...row }));
+      data.wear = next.wear.map((row) => ({ ...row }));
+      data.wishlist = next.wishlist.map((row) => ({ ...row }));
+    });
+  }
+
   // ---- Internals ---------------------------------------------------------------
 
   private async setDeleted<T extends Polish | Wear | WishlistItem>(

@@ -1278,6 +1278,39 @@ a {
 }
 
 /* ==============================================================================
+   Sync status — only drawn when there is something she could not otherwise know
+   ============================================================================== */
+
+.sync {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-4);
+  border-radius: var(--radius-md);
+  /* State surfaces carry ink text only — see the contrast audit. */
+  color: var(--ink);
+}
+
+.sync--pending {
+  background: var(--amber);
+}
+
+.sync--error {
+  background: var(--alert);
+}
+
+.sync__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sync__detail {
+  font-size: var(--text-sm);
+}
+
+/* ==============================================================================
    Connect — first run on a device
    ============================================================================== */
 
