@@ -139,8 +139,20 @@ export function TonightScreen() {
       <div className="stage">
         {/* aria-live so the result is announced, not silently swapped in. */}
         <div className="picker-result" aria-live="polite">
-          {(spinning || (!choice && pool.length > 0)) && (
-            <div className="wheel-stage">
+          {/*
+            Stays mounted for as long as there is a pool, even while the reveal card is
+            what's showing. Unmounting it between spins (as this used to do, hiding it
+            whenever a result was on screen) meant every spin after the first built a
+            brand-new <svg>, and a transform transition armed on an element in the same
+            tick it is inserted does not reliably animate — the wheel would jump straight
+            to its resting angle instead of visibly spinning. Hiding it with opacity
+            instead keeps the same element (and its rotation state) alive across spins.
+          */}
+          {pool.length > 0 && (
+            <div
+              className={`wheel-stage${!spinning && choice ? ' wheel-stage--hidden' : ''}`}
+              aria-hidden={!spinning && choice ? true : undefined}
+            >
               <Wheel pool={pool} winner={pending} spinning={spinning} onRest={settle} />
               <p className="stage__prompt">
                 {spinning ? 'Choosing…' : 'Give it a spin and let it decide.'}
