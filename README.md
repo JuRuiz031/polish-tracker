@@ -9,19 +9,59 @@ nothing that expires.
 
 ## Status
 
-**Phase 2/3 — the UI runs on seeded data.** Every screen is built and driveable against
-an in-memory repository, so the whole app can be used and iterated on before a Supabase
-project exists. Nothing persists yet: reloading the page resets to the seed, and an
-unmissable banner says so.
+**The UI is complete and driveable on seeded data; persistence is next.** Every screen
+works against an in-memory repository, so the whole app can be used and judged before a
+Supabase project exists. Nothing persists yet: reloading the page resets to the seed, and
+an unmissable banner says so.
 
-| Phase | What | State |
+### Done
+
+| # | Phase | Detail |
 |---|---|---|
-| 1 | Schema, RLS, import/export, backups | SQL + transfer layer done; needs a live Supabase project |
-| 2 | Collection + wear logging | screens done, on the in-memory repo |
-| 3 | Picker + PWA shell | picker done; installable manifest + service worker not started |
-| 3.5 | **Supabase repository + auth** | **next** — swap `InMemoryRepository` for the real one |
-| 4 | Offline write queue | not started |
-| 5 | Photos, import UI, stats | not started |
+| 1 | Domain logic | Picker, derived stats, duplicate detection, filters — pure functions, no React, no I/O |
+| 2 | Design system | Tokens, primitives, and a contrast audit that fails the build on a regression |
+| 3 | Every screen | Collection, wear log, wishlist, picker, stats — all driveable on the in-memory repo |
+| 4 | Import / export layer | JSON + CSV both directions, with round-trip tests. Code complete, not yet wired to a screen |
+| 5 | Schema, RLS, views | Written, audited, and corrected — see below |
+| 6 | Schema fixes | The audit's blocking findings, applied in place |
+| 7 | Schema validated against real Postgres | 47 assertions on PG17: constraints, the sync trigger, the views, and RLS isolation between two users |
+
+### Next
+
+| # | Phase | Detail |
+|---|---|---|
+| 8 | **Supabase repository + auth** | **Next** — swap `InMemoryRepository` for the real one; one line in `app/store.tsx` |
+| 9 | Offline write queue | The `updated_at` clock it depends on is settled and tested |
+| 10 | PWA install | Manifest + service worker |
+| 11 | Import / export UI | A settings screen for the layer built in phase 4 |
+| 12 | Photos | `photo_path` exists on the schema; nothing uploads to it yet |
+
+### What the schema audit changed
+
+An audit found four issues that were cheap to fix with no data in the database and
+expensive afterwards. All are now fixed, and
+[`src/data/__tests__/schemaParity.test.ts`](src/data/__tests__/schemaParity.test.ts)
+asserts each one so the client and the SQL cannot drift apart in silence.
+
+- **`dedupe_key` was a stored generated column** — unwritable by any insert, and a copy of
+  `brand`+`name` besides. It is an expression index now, so there is nothing to strip on
+  write and a JSON backup restores as-is.
+- **The `updated_at` trigger overwrote whatever the client sent**, which turned "last
+  write wins" into "last to arrive wins" — an edit made offline on Monday and synced
+  Wednesday would silently beat an edit made in the browser on Tuesday. It now honours a
+  client timestamp, clamped so it can never move backwards.
+- **Two check-constraint asymmetries** (`days_lasted`, `typical_price`) let Postgres hold
+  values the importer would later refuse, breaking the round-trip guarantee.
+- **Buying a wishlist item deleted the row**, discarding the price, the retailer and the
+  priority. It is now marked `Bought` and linked to the bottle it became.
+
+Full detail, including the two open questions that need a product decision rather than a
+fix, is in [`docs/pre-persistence-audit.md`](docs/pre-persistence-audit.md).
+
+The migrations were edited in place rather than corrected by a `0004`, because they had
+never been applied anywhere — the result is a clean schema rather than a record of its own
+mistakes. They have since been run against PostgreSQL 17 and all 47 assertions pass; see
+[Testing the schema](#testing-the-schema).
 
 ## Running it
 
@@ -32,17 +72,36 @@ npm install
 npm run dev          # opens on the seeded in-memory data
 ```
 
-Once Phase 3.5 lands, it will also want:
+Once the Supabase repository lands (phase 8), it will also want:
 
 ```bash
 cp .env.example .env.local   # then fill in from the Supabase dashboard
 ```
 
 ```bash
-npm test            # 149 tests: domain logic, contrast audit, round trip
+npm test            # 224 tests: domain logic, contrast audit, round trip
 npm run coverage    # domain/ is held to 90% statements
+npm run lint        # oxlint
 npx tsc -b          # typecheck
 ```
+
+### Testing the schema
+
+`npm test` includes a parity suite that reads the migrations as text and checks the
+client and the SQL still agree — enum values, bounds, the dedupe expression. What it
+cannot do is prove the SQL parses, that a `CHECK` rejects what it should, that the
+`updated_at` trigger resolves conflicts the way its comment claims, or that RLS actually
+isolates two users. That needs a real server:
+
+```bash
+./supabase/tests/run.sh            # create a throwaway Postgres, run 47 assertions
+./supabase/tests/run.sh --clean    # ...and destroy the VM afterwards
+```
+
+It builds a podman machine **of its own** (`polish-pgtest`), so it cannot disturb any
+other VM on the machine, and it recreates the database on every run — which re-proves the
+migrations apply from nothing each time. Requires podman; needs PG15+ for
+`security_invoker` and column-scoped `SET NULL`.
 
 ## Setting up Supabase
 
@@ -84,7 +143,7 @@ and what would let the backend be swapped without touching a screen.
 `data/repositories/` sits behind an interface, so Supabase is an implementation detail
 rather than an assumption baked into every component. That interface is currently
 carrying its weight: `InMemoryRepository` is a full implementation of it — client-generated
-ids, soft deletes, recomputed dedupe keys — which is what lets the entire UI be built,
+ids, soft deletes, the Bought/bought_polish_id pairing — which is what lets the entire UI be built,
 driven, and judged with no backend at all. Swapping in the Supabase implementation
 changes one line in `app/store.tsx` and no screen.
 
@@ -104,14 +163,26 @@ a signup screen; the schema and policies do not change.
 
 `times_worn`, `last_worn`, `days_since`, and `avg_rating` are never stored. They are
 computed from wear rows in `domain/derive.ts` so they work offline and cannot drift out
-of sync with the log. The equivalent SQL views exist in `0003_views.sql` for
-export sanity-checks.
+of sync with the log. Equivalent SQL views exist in `0003_views.sql` for export
+sanity-checks.
+
+`days_since` is deliberately **absent** from those views. It would have to be computed
+against the server's UTC date, while the client counts from local midnight — the exact
+off-by-one `domain/date.ts` exists to prevent, and it feeds the picker's rest-day rule.
+`last_worn` is a timezone-free fact; the client derives the rest from it.
 
 ### Deletes are soft
 
 Nothing is ever hard-deleted; rows get a `deleted_at`. One decision covering three
 requirements: Undo without confirm dialogs, idempotent replay of offline writes, and no
 way for a mis-tap to destroy data.
+
+A soft delete does **not** cascade. Deleting a polish leaves its wear rows live, which is
+deliberate — the manicures still happened, and Undo has to be able to put the bottle back
+without reconstructing history. The visible consequence is that the log keeps those rows
+and labels them "Deleted polish", while the collection, the stats and the picker no longer
+see them. Note that the SQL's `on delete cascade` therefore never fires in normal use; it
+is a guard for a hard delete, and a hard delete *would* take the wear history with it.
 
 ## Accessibility
 
