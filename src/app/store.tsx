@@ -34,16 +34,28 @@ export function StoreProvider({
   const repoRef = useRef<Repository>(repository ?? new InMemoryRepository());
   const [snapshot, setSnapshot] = useState<Snapshot>(EMPTY);
   const [ready, setReady] = useState(false);
+  /** Set when the initial load failed — a revoked token, or an unreadable file. */
+  const [error, setError] = useState<Error | null>(null);
   const [toast, setToast] = useState<Toast | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    repoRef.current.load().then((loaded) => {
-      if (cancelled) return;
-      setSnapshot(loaded);
-      setReady(true);
-    });
+    repoRef.current
+      .load()
+      .then((loaded) => {
+        if (cancelled) return;
+        setSnapshot(loaded);
+        setReady(true);
+      })
+      .catch((cause: unknown) => {
+        if (cancelled) return;
+        // Without this the promise rejects unhandled and `ready` never flips, so a
+        // revoked token or a corrupt file leaves her staring at the loading dots
+        // forever with nothing to act on. A failure has to be a state, not a hang.
+        setError(cause instanceof Error ? cause : new Error(String(cause)));
+        setReady(true);
+      });
     return () => {
       cancelled = true;
     };
@@ -101,6 +113,7 @@ export function StoreProvider({
 
     return {
       ready,
+      error,
       polishes,
       allPolishes: snapshot.polish,
       wears: snapshot.wear,
@@ -192,7 +205,7 @@ export function StoreProvider({
       showToast,
       dismissToast,
     };
-  }, [snapshot, ready, toast, refresh, removeWithUndo, showToast, dismissToast]);
+  }, [snapshot, ready, error, toast, refresh, removeWithUndo, showToast, dismissToast]);
 
   return <StoreContext value={value}>{children}</StoreContext>;
 }

@@ -17,6 +17,8 @@ export interface Toast {
 
 export interface StoreValue {
   ready: boolean;
+  /** Non-null when the collection could not be loaded at all. */
+  error: Error | null;
 
   /** Live, non-deleted polishes with derived stats. What every list renders. */
   polishes: PolishWithStats[];

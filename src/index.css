@@ -1264,6 +1264,108 @@ a {
   font-weight: var(--weight-normal);
 }
 
+/* The underlying failure, for whoever is helping — not the headline. */
+.empty__detail {
+  font-size: var(--text-sm);
+  color: var(--text-body);
+  background: var(--surface-card-deep);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+  /* An API message can be one long unbroken string; let it wrap rather than widen. */
+  overflow-wrap: anywhere;
+  text-align: left;
+  max-width: 34rem;
+}
+
+/* ==============================================================================
+   Connect — first run on a device
+   ============================================================================== */
+
+.connect {
+  min-height: 100svh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-5) var(--space-4);
+  /* Its own surface: this screen is not part of the app shell and should not look
+     like a page she has navigated to inside it. */
+  background: var(--surface-banded);
+}
+
+.connect__card {
+  width: 100%;
+  max-width: 30rem;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  padding: var(--space-6) var(--space-5);
+  background: var(--surface-card);
+  border: var(--border-width) solid var(--border-decorative);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-raised);
+}
+
+.connect__head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.connect__mark {
+  width: 3rem;
+  height: 3rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-full);
+  background: var(--surface-card-deep);
+  color: var(--text-heading);
+  margin-bottom: var(--space-1);
+}
+
+.connect__title {
+  /* --text-xl and above is where display plum is legal — see the contrast audit. */
+  font-size: var(--text-xl);
+  color: var(--text-display);
+}
+
+.connect__lede {
+  font-size: var(--text-base);
+  color: var(--text-body);
+}
+
+/* Why she is seeing this screen again, when she has used the app before. */
+.connect__reason {
+  font-size: var(--text-sm);
+  color: var(--ink);
+  background: var(--amber);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+}
+
+.connect__advanced {
+  border-top: var(--border-width) solid var(--border-decorative);
+  padding-top: var(--space-4);
+}
+
+.connect__advanced > summary {
+  font-size: var(--text-sm);
+  color: var(--text-heading);
+  cursor: pointer;
+  min-height: var(--tap-min);
+  display: flex;
+  align-items: center;
+}
+
+.connect__advanced > summary:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-offset);
+}
+
+.connect__advanced .form {
+  margin-top: var(--space-4);
+}
+
 /* ---- Log --------------------------------------------------------------------- */
 
 .summary {
