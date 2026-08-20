@@ -1,5 +1,11 @@
 name: Nightly backup
 
+# ⚠️ RETIRED — this file does not run. It lives in supabase/workflows/ rather than
+# .github/workflows/, so GitHub never picks it up. See the README beside it for why, and
+# for what to change before reactivating. In particular: the `python scripts/backup.py`
+# step below refers to the script's ORIGINAL path. It now lives at
+# supabase/scripts/backup.py, so either move it back or fix that line.
+#
 # The escape hatch, automated. Pulls every row out of Supabase into JSON and CSV so
 # that a total loss of the Supabase project costs at most one day of data.
 #

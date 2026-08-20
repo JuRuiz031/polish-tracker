@@ -1,5 +1,9 @@
 name: Supabase heartbeat
 
+# ⚠️ RETIRED — this file does not run. It lives in supabase/workflows/ rather than
+# .github/workflows/, so GitHub never picks it up. The app stores its data in a private
+# repository now, and nothing pauses. See the README beside it.
+#
 # Supabase pauses a free-tier project after ~7 days without database activity. If Anabel
 # does not open the app for a week, a paused project greets her with errors instead of
 # her collection — which is exactly the failure this project exists to prevent.

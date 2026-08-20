@@ -79,9 +79,11 @@ normalisation that keeps duplicate detection consistent, and the wishlist `Bough
 redesign that stopped buying a polish from discarding what she paid for it. All of that
 survives the backend change.
 
-⚠️ `.github/workflows/heartbeat.yml` and `backup.yml` exist to keep a Supabase project
-awake and backed up. **Neither is needed any more**, and both will fail on a schedule
-until they are removed or their secrets are configured.
+The heartbeat and nightly-backup workflows have been retired to
+[`supabase/workflows/`](supabase/workflows/), where GitHub will not run them. Both existed
+only to paper over problems the current storage model does not have — nothing pauses, and
+the commit history is already the backup. `supabase/workflows/README.md` explains how to
+bring them back if this ever moves to Supabase.
 
 ### What the schema audit changed
 
