@@ -265,8 +265,18 @@ export class GitHubRepository implements Repository {
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
       apply(this.data);
 
+      // Never write a file that could not be read back.
+      //
+      // Reads already refuse to parse a malformed file, but that only catches corruption
+      // that has already been committed. This is the other half: whatever reaches the
+      // repository has been proved to satisfy the same schema that will later be used to
+      // load it, so the app cannot be the thing that breaks its own collection. A bug in
+      // a mutation surfaces here, before the write, with her stored data still intact.
+      const text = serialise(this.data);
+      assertReadable(text);
+
       try {
-        this.sha = await writeFile(this.target, serialise(this.data), this.sha, message);
+        this.sha = await writeFile(this.target, text, this.sha, message);
         return;
       } catch (error) {
         const conflicted = error instanceof GitHubApiError && error.isConflict;
@@ -310,6 +320,25 @@ export function serialise(data: Snapshot): string {
     null,
     2,
   )}\n`;
+}
+
+/**
+ * Refuse to send something the loader would reject.
+ *
+ * The message is aimed at whoever is debugging, not at her: reaching this means the app
+ * built an invalid snapshot in memory, which is a bug rather than anything she did. The
+ * important part is that it throws BEFORE the network call, so the stored collection is
+ * untouched and the failure is recoverable by reloading.
+ */
+export function assertReadable(text: string): void {
+  try {
+    parseSnapshot(text);
+  } catch (cause) {
+    throw new Error(
+      `Refusing to save: the collection failed its own validity check, so it was not ` +
+        `written. Your stored data has not been changed. (${(cause as Error).message})`,
+    );
+  }
 }
 
 /**
