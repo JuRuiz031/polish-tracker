@@ -1,5 +1,4 @@
 import type { Polish, Wear, WishlistItem } from '../types';
-import { dedupeKey } from '../dedupe';
 
 /** Test builders. Everything defaults to something valid; override what the test is about. */
 
@@ -20,7 +19,6 @@ export function makePolish(overrides: Partial<Polish> = {}): Polish {
     photo_path: null,
     notes: null,
     archived: false,
-    dedupe_key: dedupeKey(brand, name),
     created_at: '2026-01-01T00:00:00Z',
     updated_at: '2026-01-01T00:00:00Z',
     deleted_at: null,
@@ -62,7 +60,8 @@ export function makeWishlistItem(overrides: Partial<WishlistItem> = {}): Wishlis
     status: 'Wanting',
     link: null,
     notes: null,
-    dedupe_key: dedupeKey(brand, name),
+    bought_polish_id: null,
+    bought_on: null,
     created_at: '2026-01-01T00:00:00Z',
     updated_at: '2026-01-01T00:00:00Z',
     deleted_at: null,

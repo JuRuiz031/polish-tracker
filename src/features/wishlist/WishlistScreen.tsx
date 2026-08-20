@@ -40,9 +40,16 @@ export function WishlistScreen() {
     return map;
   }, [polishes]);
 
+  /**
+   * Bought rows are kept in the data but not shown in the list — the wishlist is a list
+   * of things she still wants, and a bought item sitting in it reads as an unfinished
+   * task. The row survives so the purchase history (price, retailer, how long it was
+   * wanted) is still answerable later.
+   */
   const visible = useMemo(() => {
     const order: Record<string, number> = { High: 0, Medium: 1, Low: 2 };
     return wishlist
+      .filter((item) => item.status !== 'Bought')
       .filter((item) => priority === ANY || item.priority === priority)
       .sort((a, b) => {
         const byPriority = order[a.priority] - order[b.priority];
@@ -199,27 +206,22 @@ function WishDetail({
   onEdit: () => void;
   onClose: () => void;
 }) {
-  const { addPolish, removeWishlistItem, showToast } = useStore();
+  const { buyWishlistItem, removeWishlistItem, showToast } = useStore();
 
   /**
-   * "I bought it" — copy into the collection, then take it off the list.
+   * "I bought it" — copy into the collection and resolve the wishlist row.
    *
-   * Every field she filled in on the wishlist carries across, the bottle colour
-   * included. It previously passed null here because the wishlist had nowhere to store
-   * a shade, so buying a polish silently threw away the colour she had chosen for it.
+   * Every field she filled in carries across, the bottle colour included. The wishlist
+   * row is marked Bought and pointed at the new bottle rather than deleted: it used to
+   * be deleted, which threw away the price she expected to pay, where she meant to buy
+   * it, and how long it had been on the list — exactly the things worth knowing after
+   * the fact.
+   *
+   * The two writes and their ordering live in the store, because the foreign key
+   * between them is a data rule rather than something this screen should own.
    */
   async function moveToCollection() {
-    await addPolish({
-      brand: item.brand,
-      name: item.name,
-      color: item.color,
-      finish: item.finish,
-      swatch_hex: item.swatch_hex,
-      photo_path: null,
-      notes: item.notes,
-      archived: false,
-    });
-    await removeWishlistItem(item.id);
+    await buyWishlistItem(item);
     showToast({ message: `${item.brand} ${item.name} moved into the collection.` });
     onClose();
   }

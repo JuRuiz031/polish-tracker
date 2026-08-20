@@ -1,4 +1,4 @@
-import type { Polish, Wear, WishlistItem } from '../../domain/types';
+import type { IsoDate, Polish, Wear, WishlistItem } from '../../domain/types';
 import type { PolishInput, WearInput, WishlistInput } from '../../domain/schema';
 
 /**
@@ -13,7 +13,7 @@ import type { PolishInput, WearInput, WishlistInput } from '../../domain/schema'
  * touching every screen later. Awaiting a resolved promise costs nothing.
  *
  * Mutations return the affected row rather than void, because the caller needs the
- * server-assigned `updated_at` and the generated `dedupe_key` to update its cache.
+ * server-assigned `updated_at` to update its cache.
  */
 
 export interface Snapshot {
@@ -41,4 +41,14 @@ export interface Repository {
   updateWishlistItem(id: string, patch: Partial<WishlistInput>): Promise<WishlistItem>;
   deleteWishlistItem(id: string): Promise<WishlistItem>;
   restoreWishlistItem(id: string): Promise<WishlistItem>;
+  /**
+   * Resolve a wishlist row as bought, pointing at the polish it became. Separate from
+   * `updateWishlistItem` because status and the link have to move together — the
+   * database has a CHECK saying so.
+   */
+  markWishlistItemBought(
+    id: string,
+    polishId: string,
+    boughtOn: IsoDate,
+  ): Promise<WishlistItem>;
 }

@@ -4,8 +4,15 @@ import type { Color, Finish, Priority, SaleWindow, Status } from './enums';
  * Row types, mirroring the Postgres schema.
  *
  * `id` is always client-generated (crypto.randomUUID()) rather than left to the
- * database default. That is what makes every offline write an idempotent upsert:
- * replaying a queued insert twice lands on the same row instead of duplicating it.
+ * database default. That is what lets an offline write be replayed safely — but only
+ * when the writer issues an UPSERT. A replayed plain INSERT with the same id violates
+ * the primary key rather than being a no-op, so "client ids make writes idempotent" is
+ * true of `.upsert({ onConflict: 'id' })` and false of `.insert()`.
+ *
+ * There is no `dedupe_key` field. It was a stored generated column in Postgres, which
+ * made it unwritable — every insert and every backup restore would have had to strip it
+ * — and a stored copy of brand+name besides. It is an expression index now, and the key
+ * is computed on demand by domain/dedupe.ts.
  */
 
 /** ISO calendar date, `YYYY-MM-DD`. Deliberately not a Date — see date.ts for why. */
@@ -26,8 +33,6 @@ export interface Polish {
   photo_path: string | null;
   notes: string | null;
   archived: boolean;
-  /** Generated in Postgres. Never write this — see dedupe.ts for the client-side twin. */
-  dedupe_key: string;
   created_at: IsoTimestamp;
   updated_at: IsoTimestamp;
   deleted_at: IsoTimestamp | null;
@@ -62,7 +67,13 @@ export interface WishlistItem {
   status: Status;
   link: string | null;
   notes: string | null;
-  dedupe_key: string;
+  /**
+   * Set by "I bought it", which resolves the row rather than deleting it — so the price
+   * she expected to pay, where she meant to buy it, and how long it sat on the list all
+   * survive the purchase. Null on every row that has not been bought.
+   */
+  bought_polish_id: string | null;
+  bought_on: IsoDate | null;
   created_at: IsoTimestamp;
   updated_at: IsoTimestamp;
   deleted_at: IsoTimestamp | null;

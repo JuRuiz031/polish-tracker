@@ -19,8 +19,22 @@ const isoDate = z
 
 const isoTimestamp = z.string().min(1);
 
-/** Trimmed, non-empty. Rejects a field that is nothing but whitespace. */
-const requiredText = z.string().trim().min(1, 'Required');
+/**
+ * Trimmed, non-empty, and internally normalised: runs of whitespace collapse to one
+ * space. Rejects a field that is nothing but whitespace.
+ *
+ * The collapsing is not cosmetic. brand and name are the two halves of the duplicate
+ * key, which is computed in JS here and in SQL by an expression index — and JS `.trim()`
+ * strips all whitespace while Postgres `btrim()` strips only spaces. Guaranteeing that
+ * neither field can contain a tab, a newline, or a double space removes the one case
+ * where those two definitions disagree, so the client and the database can never
+ * disagree about whether two bottles are the same bottle. 0001_schema.sql carries the
+ * matching CHECK as a backstop.
+ */
+const requiredText = z
+  .string()
+  .transform((value) => value.replace(/\s+/g, ' ').trim())
+  .refine((value) => value.length > 0, 'Required');
 
 /** Optional free text: blank, whitespace, and absent all normalise to null. */
 const optionalText = z
@@ -71,6 +85,24 @@ export const wearInputSchema = z.object({
   notes: optionalText,
 });
 
+/**
+ * Money, matching `numeric(10, 2)` exactly.
+ *
+ * Both halves matter. The cap is the largest value the column can hold — anything more
+ * raises `22003 numeric field overflow` on write. The rounding is what stops silent
+ * drift: Postgres would quietly store 12.345 as 12.35, so an export taken after the
+ * write would not match the value that was sent, and the round-trip guarantee would be
+ * false for reasons nobody would ever think to look for. Rounding here means the value
+ * that leaves the client is the value that comes back.
+ */
+const money = z
+  .number()
+  .min(0)
+  .max(99_999_999.99, 'That is more than the price field can hold')
+  .transform((value) => Math.round(value * 100) / 100)
+  .nullable()
+  .default(null);
+
 export const wishlistInputSchema = z.object({
   brand: requiredText,
   name: requiredText,
@@ -78,7 +110,7 @@ export const wishlistInputSchema = z.object({
   finish: finishSchema,
   swatch_hex: hexColor,
   where_sold: optionalText,
-  typical_price: z.number().min(0).nullable().default(null),
+  typical_price: money,
   sale_window: saleWindowSchema.nullable().default(null),
   priority: prioritySchema.default('Medium'),
   status: statusSchema.default('Wanting'),
@@ -95,16 +127,29 @@ const rowFields = {
   deleted_at: isoTimestamp.nullable().default(null),
 };
 
+/**
+ * `dedupe_key` is tolerated but discarded on the way in.
+ *
+ * It is no longer a column — it became an expression index in 0001 — but a backup taken
+ * before that change still carries it on every row, and refusing those files would mean
+ * the escape hatch stopped opening the very archives it exists to protect. Accepting and
+ * dropping it keeps old exports importable without letting a stale copy back into the
+ * data.
+ */
+const legacyDedupeKey = z.string().optional().transform(() => undefined);
+
 export const polishRowSchema = polishInputSchema.extend({
   ...rowFields,
-  // Generated in Postgres; accepted on import but always recomputed rather than trusted.
-  dedupe_key: z.string().optional(),
+  dedupe_key: legacyDedupeKey,
 });
 
 export const wearRowSchema = wearInputSchema.extend(rowFields);
+
 export const wishlistRowSchema = wishlistInputSchema.extend({
   ...rowFields,
-  dedupe_key: z.string().optional(),
+  dedupe_key: legacyDedupeKey,
+  bought_polish_id: z.string().min(1).nullable().default(null),
+  bought_on: isoDate.nullable().default(null),
 });
 
 /**

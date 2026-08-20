@@ -40,6 +40,8 @@ export interface StoreValue {
   addWishlistItem: (input: WishlistInput) => Promise<WishlistItem>;
   editWishlistItem: (id: string, patch: Partial<WishlistInput>) => Promise<void>;
   removeWishlistItem: (id: string) => Promise<void>;
+  /** "I bought it": copy into the collection and resolve the wishlist row as Bought. */
+  buyWishlistItem: (item: WishlistItem) => Promise<void>;
 
   toast: Toast | null;
   showToast: (toast: Toast) => void;

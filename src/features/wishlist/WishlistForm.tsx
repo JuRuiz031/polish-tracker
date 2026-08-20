@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { FINISHES, PRIORITIES, SALE_WINDOWS, STATUSES } from '../../domain/enums';
+import { FINISHES, PRIORITIES, SALE_WINDOWS, SELECTABLE_STATUSES } from '../../domain/enums';
 import { wishlistInputSchema } from '../../domain/schema';
 import type { WishlistItem } from '../../domain/types';
 import { useStore } from '../../app/storeContext';
@@ -125,7 +125,10 @@ export function WishlistForm({
           label="Status"
           value={status}
           onChange={(value) => setStatus(value)}
-          options={STATUSES}
+          /* Not STATUSES: 'Bought' is written by the "I bought it" action together with
+             a link to the bottle it created, and the database requires that pairing.
+             Offering it here would let her claim a purchase with nothing to point at. */
+          options={SELECTABLE_STATUSES}
         />
       </div>
 

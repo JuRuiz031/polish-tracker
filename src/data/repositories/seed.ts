@@ -1,4 +1,3 @@
-import { dedupeKey } from '../../domain/dedupe';
 import { toIsoDate } from '../../domain/date';
 import type { Polish, Wear, WishlistItem } from '../../domain/types';
 import type { Snapshot } from './types';
@@ -210,7 +209,6 @@ export function buildSeed(): Snapshot {
       photo_path: null,
       notes: seed.notes ?? null,
       archived: seed.archived ?? false,
-      dedupe_key: dedupeKey(seed.brand, seed.name),
       created_at: created,
       updated_at: created,
       deleted_at: null,
@@ -256,7 +254,8 @@ export function buildSeed(): Snapshot {
       status: seed.status,
       link: null,
       notes: seed.notes ?? null,
-      dedupe_key: dedupeKey(seed.brand, seed.name),
+      bought_polish_id: null,
+      bought_on: null,
       created_at: created,
       updated_at: created,
       deleted_at: null,

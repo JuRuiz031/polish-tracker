@@ -26,7 +26,19 @@ export const SALE_WINDOWS = [
 ] as const;
 
 export const PRIORITIES = ['High', 'Medium', 'Low'] as const;
-export const STATUSES = ['Wanting', 'Wishing', 'Waiting'] as const;
+
+/**
+ * Every wishlist status the database accepts.
+ *
+ * 'Bought' is a resolved state, not an intention. It is written by the "I bought it"
+ * action together with a link to the bottle it became, and Postgres enforces that
+ * pairing — so it must exist here for reading and importing, but offering it in the
+ * form would let her set it by hand with nothing to point at. Forms use
+ * SELECTABLE_STATUSES; anything that parses stored data uses STATUSES.
+ */
+export const STATUSES = ['Wanting', 'Wishing', 'Waiting', 'Bought'] as const;
+
+export const SELECTABLE_STATUSES = ['Wanting', 'Wishing', 'Waiting'] as const;
 
 /** Rest-period options for the picker. Default is 14. */
 export const REST_DAY_OPTIONS = [0, 7, 14, 21, 28, 45, 60, 90] as const;

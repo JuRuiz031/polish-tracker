@@ -27,9 +27,21 @@ function trimSpaces(value: string): string {
   return value.replace(/^ +| +$/g, '');
 }
 
-/** Rows that count toward duplicate detection: live and not archived. */
-function isCountable(row: { deleted_at: string | null; archived?: boolean }): boolean {
-  return row.deleted_at === null && row.archived !== true;
+/**
+ * Rows that count toward duplicate detection: live, not archived, not already bought.
+ *
+ * A Bought wishlist row is excluded because it is history, not an intention. It links
+ * directly to the bottle it became, so flagging it "you already own this" would be
+ * telling her something she just did — and it would flag itself against the very polish
+ * the purchase created. Mirrors the `status <> 'Bought'` filter on the
+ * wishlist_already_owned view.
+ */
+function isCountable(row: {
+  deleted_at: string | null;
+  archived?: boolean;
+  status?: string;
+}): boolean {
+  return row.deleted_at === null && row.archived !== true && row.status !== 'Bought';
 }
 
 /**

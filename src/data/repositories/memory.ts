@@ -1,4 +1,3 @@
-import { dedupeKey } from '../../domain/dedupe';
 import type { Polish, Wear, WishlistItem } from '../../domain/types';
 import type { PolishInput, WearInput, WishlistInput } from '../../domain/schema';
 import { buildSeed } from './seed';
@@ -12,9 +11,12 @@ import type { Repository, Snapshot } from './types';
  * is being designed, and it means no Supabase project has to exist yet.
  *
  * It is a real implementation of `Repository`, not a stub — it enforces the same rules
- * the database will (client-generated ids, soft deletes, recomputed dedupe_key,
- * updated_at bumps). When Supabase lands, the screens do not change; only the object
- * handed to the provider does.
+ * the database will (client-generated ids, soft deletes, updated_at bumps, the
+ * Bought/bought_polish_id pairing). When Supabase lands, the screens do not change; only
+ * the object handed to the provider does.
+ *
+ * It does NOT store a dedupe_key, matching 0001: the duplicate key is an expression
+ * index in Postgres and a function call (domain/dedupe.ts) here.
  */
 
 const USER_ID = 'demo-user';
@@ -61,7 +63,6 @@ export class InMemoryRepository implements Repository {
       photo_path: input.photo_path,
       notes: input.notes,
       archived: input.archived,
-      dedupe_key: dedupeKey(input.brand, input.name),
       created_at: timestamp,
       updated_at: timestamp,
       deleted_at: null,
@@ -73,8 +74,6 @@ export class InMemoryRepository implements Repository {
   async updatePolish(id: string, patch: Partial<PolishInput>): Promise<Polish> {
     const row = this.require(this.data.polish, id, 'polish');
     Object.assign(row, patch, { updated_at: now() });
-    // Regenerated rather than patched, mirroring the Postgres generated column.
-    row.dedupe_key = dedupeKey(row.brand, row.name);
     return { ...row };
   }
 
@@ -139,7 +138,8 @@ export class InMemoryRepository implements Repository {
       status: input.status,
       link: input.link,
       notes: input.notes,
-      dedupe_key: dedupeKey(input.brand, input.name),
+      bought_polish_id: null,
+      bought_on: null,
       created_at: timestamp,
       updated_at: timestamp,
       deleted_at: null,
@@ -151,7 +151,26 @@ export class InMemoryRepository implements Repository {
   async updateWishlistItem(id: string, patch: Partial<WishlistInput>): Promise<WishlistItem> {
     const row = this.require(this.data.wishlist, id, 'wishlist item');
     Object.assign(row, patch, { updated_at: now() });
-    row.dedupe_key = dedupeKey(row.brand, row.name);
+    return { ...row };
+  }
+
+  /**
+   * "I bought it" — resolve the row instead of deleting it.
+   *
+   * Mirrors the wishlist_bought_link_needs_bought_status constraint in 0001: status and
+   * the link are written together, never separately, so the pair cannot drift out of
+   * step here and then be rejected by Postgres later.
+   */
+  async markWishlistItemBought(
+    id: string,
+    polishId: string,
+    boughtOn: string,
+  ): Promise<WishlistItem> {
+    const row = this.require(this.data.wishlist, id, 'wishlist item');
+    row.status = 'Bought';
+    row.bought_polish_id = polishId;
+    row.bought_on = boughtOn;
+    row.updated_at = now();
     return { ...row };
   }
 

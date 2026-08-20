@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { today } from '../domain/date';
 import { findDuplicates, flagWishlist } from '../domain/dedupe';
 import { summarise, withStats } from '../domain/derive';
 import { InMemoryRepository } from '../data/repositories/memory';
@@ -158,6 +159,34 @@ export function StoreProvider({
           () => repo.restoreWishlistItem(id),
           'Removed from the wishlist.',
         ),
+
+      /**
+       * "I bought it" — two writes that have to happen in this order.
+       *
+       * The polish is created first, because the wishlist row's `bought_polish_id` has
+       * to point at something that exists: Postgres has a foreign key on it. If the
+       * second write fails, the failure is visible and safe — she has the bottle in her
+       * collection and the wishlist row is still there to try again, which is the right
+       * way round. Doing it the other way would resolve the wishlist row against a
+       * bottle that was never created.
+       *
+       * This lives in the store rather than the screen because it spans two tables and
+       * the ordering is a data rule, not a UI detail.
+       */
+      buyWishlistItem: async (item) => {
+        const polish = await repo.addPolish({
+          brand: item.brand,
+          name: item.name,
+          color: item.color,
+          finish: item.finish,
+          swatch_hex: item.swatch_hex,
+          photo_path: null,
+          notes: item.notes,
+          archived: false,
+        });
+        await repo.markWishlistItemBought(item.id, polish.id, today());
+        await refresh();
+      },
 
       toast,
       showToast,
