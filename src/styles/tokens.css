@@ -1,0 +1,128 @@
+/**
+ * Design tokens.
+ *
+ * Palette values mirror src/styles/palette.ts, which is the source of truth.
+ * tokens.test.ts parses this file and fails if the two ever disagree.
+ *
+ * Accessibility notes are load-bearing here, not decoration — see contrast.test.ts
+ * for the measurements behind every "AAA" comment.
+ */
+
+:root {
+  /* ---- Palette (approved in the workbook; do not change values) ---- */
+  --plum: #8e4a63;
+  --deep-plum: #6e3049;
+  --blush: #fdf4f7;
+  --card: #fbeaf0;
+  --card-deep: #f6dee7;
+  --edge: #dcb4c4;
+  --off-white: #fffbfc;
+  --ink: #1a1a1a;
+  --mint: #dff1e7;
+  --amber: #fce9d2;
+  --alert: #f9cdcd;
+
+  /* ---- Semantic surfaces ---- */
+  --surface-page: var(--off-white);
+  --surface-banded: var(--blush);
+  --surface-card: var(--card);
+  --surface-card-deep: var(--card-deep);
+
+  /* State surfaces. Text on these is ALWAYS --text-body (ink): plum-family text
+     measures 6.7:1 and 4.4:1 on --state-duplicate, both short of their bars. */
+  --state-never-worn: var(--mint);
+  --state-resting: var(--amber);
+  --state-duplicate: var(--alert);
+
+  /* ---- Semantic text ---- */
+  --text-body: var(--ink); /* 17:1 on page — AAA */
+  --text-heading: var(--deep-plum); /* 9.4:1 on page — AAA */
+  --text-display: var(--plum); /* 6.2:1 — LARGE TEXT ONLY (24px+, or 18.66px+ bold) */
+  --text-on-fill: #ffffff; /* 6.3:1 on plum, 9.6:1 on deep plum */
+
+  /* ---- Borders ----
+     --border-decorative is 1.8:1 and carries no meaning: hairlines only.
+     --border-functional is 6.2:1 and is required for anything WCAG 1.4.11 covers —
+     input borders, focus rings, selected states. Never identify a control with the
+     decorative border alone. */
+  --border-decorative: var(--edge);
+  --border-functional: var(--plum);
+  --border-width: 1px;
+  --focus-ring: 3px solid var(--plum);
+  --focus-offset: 2px;
+
+  /* ---- Type ----
+     Body: Atkinson Hyperlegible Next — built by the Braille Institute for character
+     disambiguation (distinct I/l/1, non-mirrored b/d/p/q). A legibility face, not a
+     dyslexia-branded one, which is the requirement the brief actually sets.
+     Display: Bricolage Grotesque — the personality, cutting against the blush. */
+  --font-body: 'Atkinson Hyperlegible Next', 'Atkinson Hyperlegible', -apple-system,
+    BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --font-display: 'Bricolage Grotesque', var(--font-body);
+
+  /* Body sits at 17px — above the 16px floor, with room to grow. Nothing below 400. */
+  --text-xs: 0.875rem; /* 14px — metadata only, never body copy */
+  --text-sm: 0.9375rem; /* 15px */
+  --text-base: 1.0625rem; /* 17px — body */
+  --text-lg: 1.25rem; /* 20px */
+  --text-xl: 1.5rem; /* 24px — display-plum becomes legal at this size */
+  --text-2xl: 2rem; /* 32px */
+  --text-3xl: 2.75rem; /* 44px — the picker reveal */
+
+  --weight-normal: 400; /* the floor; no thin weights anywhere */
+  --weight-medium: 500;
+  --weight-bold: 700;
+
+  --leading-body: 1.65; /* generous, per the brief's 1.6+ */
+  --leading-tight: 1.25; /* headings only */
+  --tracking-body: 0.01em;
+
+  /* ---- Spacing ---- */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-8: 3rem;
+
+  /* ---- Shape ---- */
+  --radius-sm: 6px;
+  --radius-md: 12px;
+  --radius-lg: 20px;
+  --radius-full: 999px;
+
+  /* Structure comes from spacing and fill, not luminance: the page, blush, card and
+     card-deep surfaces are all within a hair of each other by design. */
+  --shadow-card: 0 1px 2px rgb(110 48 73 / 6%), 0 4px 12px rgb(110 48 73 / 5%);
+  --shadow-raised: 0 2px 6px rgb(110 48 73 / 10%), 0 12px 28px rgb(110 48 73 / 8%);
+
+  /* ---- Motion ---- */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+
+  /* A separate curve for large moving surfaces. --ease-out is heavily front-loaded —
+     it covers ~70% of the distance in the first 15% of the time, which is snappy on a
+     chip and reads as a lurch-then-crawl on a full-width sheet. This one accelerates
+     and decelerates evenly, so a panel travelling 600px arrives smoothly. */
+  --ease-sheet: cubic-bezier(0.32, 0.72, 0, 1);
+
+  --duration-fast: 140ms;
+  --duration-base: 260ms;
+  /* Large surfaces need longer than small ones to read as movement rather than a jump. */
+  --duration-sheet: 340ms;
+  --duration-reveal: 620ms;
+
+  /* Minimum tap target. Most logging happens standing at a table with wet nails. */
+  --tap-min: 48px;
+}
+
+/* Honour the system preference. Every animation in the app must degrade through
+   these variables rather than hard-coding a duration. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-fast: 0ms;
+    --duration-base: 0ms;
+    --duration-sheet: 0ms;
+    --duration-reveal: 0ms;
+  }
+}

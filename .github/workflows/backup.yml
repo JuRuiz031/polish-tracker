@@ -1,0 +1,75 @@
+name: Nightly backup
+
+# The escape hatch, automated. Pulls every row out of Supabase into JSON and CSV so
+# that a total loss of the Supabase project costs at most one day of data.
+#
+# Setup required before this works:
+#   1. Create a PRIVATE repository to hold the backups (e.g. polish-backups).
+#   2. Create a fine-grained PAT with Contents: read/write on that repo only.
+#   3. Add repository secrets here:
+#        SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, BACKUP_REPO, BACKUP_TOKEN
+#
+# The backup repo must be private: these files contain the entire collection.
+
+on:
+  schedule:
+    - cron: '41 3 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: backup
+  cancel-in-progress: false
+
+jobs:
+  dump:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out the app (for scripts/backup.py)
+        uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Check out the private backup repository
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ secrets.BACKUP_REPO }}
+          token: ${{ secrets.BACKUP_TOKEN }}
+          path: backup-repo
+
+      - name: Dump every table
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          BACKUP_DIR: backup-repo/backups
+        # backup.py exits non-zero if the collection comes back empty, so a broken key
+        # or a paused project can never overwrite a good backup with an empty file.
+        run: python scripts/backup.py
+
+      - name: Commit the change
+        working-directory: backup-repo
+        run: |
+          set -euo pipefail
+          git config user.name  "polish-backup[bot]"
+          git config user.email "polish-backup@users.noreply.github.com"
+          git add backups
+
+          # Canonical JSON means an unchanged day produces no diff at all, so quiet
+          # days leave no empty commits behind.
+          if git diff --staged --quiet; then
+            echo "No changes since the last backup."
+          else
+            git commit -m "Backup $(date -u +%Y-%m-%d)"
+            git push
+          fi
+
+      - name: Keep a copy on the workflow run as well
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: polish-backup-${{ github.run_id }}
+          path: backup-repo/backups/*-latest.*
+          retention-days: 90
+          if-no-files-found: warn

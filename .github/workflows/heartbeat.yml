@@ -1,0 +1,50 @@
+name: Supabase heartbeat
+
+# Supabase pauses a free-tier project after ~7 days without database activity. If Anabel
+# does not open the app for a week, a paused project greets her with errors instead of
+# her collection — which is exactly the failure this project exists to prevent.
+#
+# One trivial query a day resets that timer. It costs nothing and needs no maintenance.
+
+on:
+  schedule:
+    # 09:00 UTC daily. Any time works; this just avoids the top-of-hour crush when
+    # GitHub's scheduler is most heavily contended and most likely to delay a run.
+    - cron: '17 9 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: heartbeat
+  cancel-in-progress: false
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Query the database
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          # The anon key is enough: RLS returns zero rows to an unauthenticated caller,
+          # but the query still counts as database activity. No need to expose the
+          # service_role key to a job that only has to prove the database is awake.
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          set -euo pipefail
+
+          status=$(curl -sS -o /dev/null -w '%{http_code}' \
+            --max-time 30 \
+            -H "apikey: ${SUPABASE_ANON_KEY}" \
+            -H "Authorization: Bearer ${SUPABASE_ANON_KEY}" \
+            -H "Range: 0-0" \
+            "${SUPABASE_URL}/rest/v1/polish?select=id")
+
+          echo "Supabase responded with HTTP ${status}"
+
+          # 200 and 206 are both healthy (206 is the ranged response). 401/403 mean the
+          # request reached a live database and was refused by RLS, which still counts
+          # as activity — but it signals a misconfigured key, so fail and get noticed.
+          case "${status}" in
+            200|206) echo "Database is awake." ;;
+            *) echo "::error::Unexpected status ${status} — check the project is not paused and the keys are current."; exit 1 ;;
+          esac
