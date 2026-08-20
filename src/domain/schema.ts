@@ -128,26 +128,24 @@ const rowFields = {
 };
 
 /**
- * `dedupe_key` is tolerated but discarded on the way in.
+ * `dedupe_key` is deliberately absent from these schemas.
  *
  * It is no longer a column — it became an expression index in 0001 — but a backup taken
  * before that change still carries it on every row, and refusing those files would mean
- * the escape hatch stopped opening the very archives it exists to protect. Accepting and
- * dropping it keeps old exports importable without letting a stale copy back into the
- * data.
+ * the escape hatch stopped opening the very archives it exists to protect. Zod strips
+ * unknown keys by default, so an old export parses cleanly and the stale value is simply
+ * not carried through.
+ *
+ * Declaring it explicitly (even as an optional field transformed away) is worse: the key
+ * survives on the parsed object with the value `undefined`, so rows read back from a
+ * legacy file are subtly a different shape from rows the app created itself.
  */
-const legacyDedupeKey = z.string().optional().transform(() => undefined);
-
-export const polishRowSchema = polishInputSchema.extend({
-  ...rowFields,
-  dedupe_key: legacyDedupeKey,
-});
+export const polishRowSchema = polishInputSchema.extend(rowFields);
 
 export const wearRowSchema = wearInputSchema.extend(rowFields);
 
 export const wishlistRowSchema = wishlistInputSchema.extend({
   ...rowFields,
-  dedupe_key: legacyDedupeKey,
   bought_polish_id: z.string().min(1).nullable().default(null),
   bought_on: isoDate.nullable().default(null),
 });

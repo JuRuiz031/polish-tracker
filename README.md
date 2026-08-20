@@ -9,10 +9,33 @@ nothing that expires.
 
 ## Status
 
-**The UI is complete and driveable on seeded data; persistence is next.** Every screen
-works against an in-memory repository, so the whole app can be used and judged before a
-Supabase project exists. Nothing persists yet: reloading the page resets to the seed, and
-an unmissable banner says so.
+**The UI is complete and driveable on seeded data; persistence is being wired up.** Every
+screen works against an in-memory repository, so the whole app can be used and judged
+before any backend exists. Nothing persists yet: reloading the page resets to the seed,
+and an unmissable banner says so.
+
+### Storage: a private repository, not a database
+
+The collection is stored as one JSON file in a **private GitHub repository**, written
+through the Contents API. Every save is a commit.
+
+This replaced a planned Supabase backend, and the reason is durability rather than
+elegance. This app is a gift; it has to keep working while nobody is maintaining it. The
+Supabase free tier pauses a project after 7 days of inactivity and needs a **manual**
+dashboard click to restore, keeps **zero** backups of its own, and releases the project's
+API URL after 90 days paused. Keeping it awake meant a scheduled GitHub Action — which
+GitHub disables after 60 days of repository inactivity, taking the nightly backup with it.
+Two safety nets sharing one point of failure, on a clock, about two months after the last
+commit.
+
+A private repo has none of that. Nothing pauses, nothing expires, no cron has to keep
+anything warm, and the history *is* the backup — any day of her collection is recoverable
+with `git checkout`. The stored file is exactly the shape `exportSchema` defines, so
+cloning the repo yields a working export with no app involved.
+
+What it costs, stated plainly: no server-side constraint enforcement (the client
+validates, and a push-triggered Action can check the file), and a hard single-user
+ceiling. Going multi-user later means a real backend and a migration.
 
 ### Done
 
@@ -22,70 +45,111 @@ an unmissable banner says so.
 | 2 | Design system | Tokens, primitives, and a contrast audit that fails the build on a regression |
 | 3 | Every screen | Collection, wear log, wishlist, picker, stats — all driveable on the in-memory repo |
 | 4 | Import / export layer | JSON + CSV both directions, with round-trip tests. Code complete, not yet wired to a screen |
-| 5 | Schema, RLS, views | Written, audited, and corrected — see below |
-| 6 | Schema fixes | The audit's blocking findings, applied in place |
-| 7 | Schema validated against real Postgres | 47 assertions on PG17: constraints, the sync trigger, the views, and RLS isolation between two users |
+| 5 | Postgres schema | Written, audited, fixed, and validated against real PG17 — now **shelved**, see below |
+| 6 | GitHub storage layer | `GitHubRepository` + Contents API client, behind the existing interface. Tested against a mocked API |
 
 ### Next
 
 | # | Phase | Detail |
 |---|---|---|
-| 8 | **Supabase repository + auth** | **Next** — swap `InMemoryRepository` for the real one; one line in `app/store.tsx` |
-| 9 | Offline write queue | The `updated_at` clock it depends on is settled and tested |
-| 10 | PWA install | Manifest + service worker |
-| 11 | Import / export UI | A settings screen for the layer built in phase 4 |
-| 12 | Photos | `photo_path` exists on the schema; nothing uploads to it yet |
+| 7 | **Setup screen + wiring** | **Next** — paste a token, verify write access, store it, swap the repository in `app/store.tsx` |
+| 8 | Export screen | Wire up the phase-4 layer. This is what makes her data independent of every account involved |
+| 9 | Offline cache | A full local copy so the app works with no signal, and a failed write is queued rather than lost |
+| 10 | PWA install | Manifest + service worker. Load-bearing for data safety — see below |
+| 11 | Batched bulk import | Importing her spreadsheet must be **one** commit, not one per polish |
+| 12 | Photos | `photo_path` exists on the row type; nothing uploads to it yet |
+
+### Why PWA install matters more than it looks
+
+iOS caps script-writable storage at 7 days for ordinary Safari tabs, and can evict
+IndexedDB from infrequently-used sites. Web apps **installed to the home screen** with
+`display: standalone` are exempt. So installing is not polish — it is what makes the
+offline copy on her phone trustworthy, and it is why phase 10 is not last.
+
+### The Postgres work is shelved, not deleted
+
+`supabase/` still holds the schema, the RLS policies, the views, and a test harness that
+proves all of it against a real PostgreSQL 17. It is kept because it is the migration
+path if this ever goes multi-user — that design is done and validated, which is the
+expensive part.
+
+It was not wasted work either. The audit that produced it shook out constraint
+asymmetries that fed the Zod schemas the app still uses today, the brand/name
+normalisation that keeps duplicate detection consistent, and the wishlist `Bought`
+redesign that stopped buying a polish from discarding what she paid for it. All of that
+survives the backend change.
+
+⚠️ `.github/workflows/heartbeat.yml` and `backup.yml` exist to keep a Supabase project
+awake and backed up. **Neither is needed any more**, and both will fail on a schedule
+until they are removed or their secrets are configured.
 
 ### What the schema audit changed
 
-An audit found four issues that were cheap to fix with no data in the database and
-expensive afterwards. All are now fixed, and
-[`src/data/__tests__/schemaParity.test.ts`](src/data/__tests__/schemaParity.test.ts)
-asserts each one so the client and the SQL cannot drift apart in silence.
+An audit of the schema against the client found four issues, all now fixed. Most of what
+it turned up outlived the backend it was written for — which is the argument for having
+done it before any data existed, rather than the argument against having done it at all.
 
-- **`dedupe_key` was a stored generated column** — unwritable by any insert, and a copy of
-  `brand`+`name` besides. It is an expression index now, so there is nothing to strip on
-  write and a JSON backup restores as-is.
-- **The `updated_at` trigger overwrote whatever the client sent**, which turned "last
-  write wins" into "last to arrive wins" — an edit made offline on Monday and synced
-  Wednesday would silently beat an edit made in the browser on Tuesday. It now honours a
-  client timestamp, clamped so it can never move backwards.
-- **Two check-constraint asymmetries** (`days_lasted`, `typical_price`) let Postgres hold
-  values the importer would later refuse, breaking the round-trip guarantee.
-- **Buying a wishlist item deleted the row**, discarding the price, the retailer and the
-  priority. It is now marked `Bought` and linked to the bottle it became.
+| Finding | Still live? |
+|---|---|
+| **`dedupe_key` was a stored generated column** — unwritable by any insert, and a redundant copy of `brand`+`name` | **Yes.** The field is gone from the row types, so the stored JSON has no stale copy to disagree with the rows it was derived from |
+| **Two check-constraint asymmetries** (`days_lasted`, `typical_price`) let the database hold values the importer would refuse | **Yes, and it matters more now.** With no server, the Zod schemas are the *only* enforcement — including rounding prices so a stored value can never differ from what was sent |
+| **Buying a wishlist item deleted the row**, discarding the price, the retailer and the priority | **Yes.** Lives in the row types, the enums, the UI and both repositories |
+| **The `updated_at` trigger overwrote the client's timestamp**, turning "last write wins" into "last to arrive wins" | Shelved with the SQL — but the same rule now resolves two-device conflicts in `GitHubRepository`, by re-reading and re-applying rather than overwriting |
+
+Also from that audit: **brand and name are normalised on write** (whitespace collapsed,
+ends trimmed). That began as a way to stop JS `.trim()` and Postgres `btrim()` disagreeing
+about duplicates, and it survives as the reason duplicate detection is stable at all.
 
 Full detail, including the two open questions that need a product decision rather than a
 fix, is in [`docs/pre-persistence-audit.md`](docs/pre-persistence-audit.md).
-
-The migrations were edited in place rather than corrected by a `0004`, because they had
-never been applied anywhere — the result is a clean schema rather than a record of its own
-mistakes. They have since been run against PostgreSQL 17 and all 47 assertions pass; see
-[Testing the schema](#testing-the-schema).
+[`src/data/__tests__/schemaParity.test.ts`](src/data/__tests__/schemaParity.test.ts) keeps
+the shelved SQL and the live client from drifting apart, so the migration path stays valid
+if it is ever needed. See
+[Testing the shelved Postgres schema](#testing-the-shelved-postgres-schema).
 
 ## Running it
 
-No Supabase project is needed to run the UI right now:
+No backend of any kind is needed to run the UI:
 
 ```bash
 npm install
 npm run dev          # opens on the seeded in-memory data
 ```
 
-Once the Supabase repository lands (phase 8), it will also want:
-
 ```bash
-cp .env.example .env.local   # then fill in from the Supabase dashboard
-```
-
-```bash
-npm test            # 224 tests: domain logic, contrast audit, round trip
+npm test            # 245 tests: domain logic, storage layer, contrast audit, round trip
 npm run coverage    # domain/ is held to 90% statements
 npm run lint        # oxlint
 npx tsc -b          # typecheck
 ```
 
-### Testing the schema
+## Setting up storage
+
+One private repository holds the collection. She does **not** need a GitHub account —
+the token is created once, by you, and put on her devices; GitHub stays invisible to her.
+
+1. Create a **private** repository, e.g. `polish-data`. Nothing needs to be in it — the
+   app creates the file on her first save.
+2. GitHub → Settings → Developer settings → **Fine-grained tokens** → Generate new token.
+3. **Resource owner:** you. **Repository access:** Only select repositories → `polish-data`.
+4. **Permissions:** Contents → **Read and write**. (Metadata read is added automatically.
+   Grant nothing else.)
+5. **Expiration:** No expiration. Personal-account tokens allow this; the 366-day cap is
+   an organisation policy and does not apply here.
+6. Enter it in the app's setup screen, on each device she uses.
+
+> ⚠️ **Use a fine-grained token, never a classic one.** A classic PAT with `repo` scope
+> can reach **every private repository on the account**. A fine-grained token scoped to
+> one repo with Contents read/write can do exactly one thing: read and write files in that
+> repo. It cannot see other repositories, cannot delete this one, and cannot act as the
+> account anywhere else. That difference is the entire security model for a credential
+> that lives on a phone.
+
+Commits are authored as `Polish <app@polish.invalid>` rather than as the token's owner.
+`.invalid` is reserved by RFC 2606 and can never belong to a GitHub account, so a saved
+manicure cannot land on anyone's contribution graph.
+
+### Testing the shelved Postgres schema
 
 `npm test` includes a parity suite that reads the migrations as text and checks the
 client and the SQL still agree — enum values, bounds, the dedupe expression. What it
@@ -103,33 +167,12 @@ other VM on the machine, and it recreates the database on every run — which re
 migrations apply from nothing each time. Requires podman; needs PG15+ for
 `security_invoker` and column-scoped `SET NULL`.
 
-## Setting up Supabase
-
-1. Create a free project at [supabase.com](https://supabase.com).
-2. Run the migrations in order, via the SQL editor or `supabase db push`:
-   - `supabase/migrations/0001_schema.sql`
-   - `supabase/migrations/0002_rls.sql`
-   - `supabase/migrations/0003_views.sql`
-3. **Authentication → Providers → Email: turn "Enable signup" OFF.** Single-user is
-   enforced here, not in code. Add the one user by invite.
-4. Copy the project URL and anon key into `.env.local`.
-5. Add repository secrets for the workflows: `SUPABASE_URL`, `SUPABASE_ANON_KEY`,
-   `SUPABASE_SERVICE_ROLE_KEY`, `BACKUP_REPO`, `BACKUP_TOKEN`.
-
-### Why the heartbeat workflow exists
-
-Supabase pauses a free project after ~7 days without database activity. A gift app that
-sits unopened for a week would otherwise greet its user with errors.
-`.github/workflows/heartbeat.yml` issues one trivial query a day to keep it awake, and
-`backup.yml` dumps everything nightly to a private repo so even a total loss of the
-Supabase project costs at most one day.
-
 ## Architecture
 
 ```
 src/
-  domain/     Pure TypeScript. No React, no Supabase, no I/O.
-  data/       Supabase client, repositories, offline queue, import/export.
+  domain/     Pure TypeScript. No React, no network, no I/O.
+  data/       Storage clients, repositories, import/export.
   features/   One directory per screen.
   ui/         Shared primitives.
   styles/     Design tokens and the contrast audit.
@@ -140,36 +183,48 @@ test, duplicate detection, derived stats — is a pure function there, imported 
 but importing nothing from it. That is what makes the rules testable without a browser,
 and what would let the backend be swapped without touching a screen.
 
-`data/repositories/` sits behind an interface, so Supabase is an implementation detail
-rather than an assumption baked into every component. That interface is currently
-carrying its weight: `InMemoryRepository` is a full implementation of it — client-generated
-ids, soft deletes, the Bought/bought_polish_id pairing — which is what lets the entire UI be built,
-driven, and judged with no backend at all. Swapping in the Supabase implementation
-changes one line in `app/store.tsx` and no screen.
+`data/repositories/` sits behind an interface, so the backend is an implementation detail
+rather than an assumption baked into every component. That interface has now earned itself
+twice over. It let the entire UI be built and judged against `InMemoryRepository` with no
+backend at all — and when the backend changed from Postgres to a GitHub repository, the
+switch was a new class implementing the same eleven methods. **No screen changed. No
+domain function changed.** Selecting a repository is one line in `app/store.tsx`.
+
+Three implementations now exist or are planned:
+
+| | Used for |
+|---|---|
+| `InMemoryRepository` | the seeded demo, and every test that needs a backend |
+| `GitHubRepository` | production storage — one JSON file, one commit per change |
+| *(shelved)* Supabase | kept as the multi-user migration path, not built |
 
 `data/repositories/seed.ts` is a stand-in for the spreadsheet import, shaped to put
 every state the UI must handle on screen at once: never-worn, long-resting, recently
 worn, a duplicate pair, an archived bottle, and both wishlist flag states.
 
-### Multi-user
+### Multi-user, if it ever happens
 
-The app ships single-user, but the database is multi-tenant from day one. Every table
-carries `user_id` with a row-level-security policy keyed to `auth.uid()`, so isolation
-is enforced by Postgres rather than by application code — a bug in the client cannot
-leak one user's data to another. Opening it up later means enabling signups and adding
-a signup screen; the schema and policies do not change.
+Storing the collection in one repository is a single-user design and there is no way to
+dress that up: going multi-user means a real backend.
+
+The groundwork is done, though. Rows still carry `user_id`, and the shelved Postgres
+schema is multi-tenant with row-level security keyed to `auth.uid()` — isolation enforced
+by the database rather than by application code, verified with two users. Migrating would
+mean standing that schema up and importing the JSON file, which is already exactly the
+format the importer reads.
 
 ### Derived values
 
 `times_worn`, `last_worn`, `days_since`, and `avg_rating` are never stored. They are
-computed from wear rows in `domain/derive.ts` so they work offline and cannot drift out
-of sync with the log. Equivalent SQL views exist in `0003_views.sql` for export
-sanity-checks.
+computed from wear rows in `domain/derive.ts` so they work offline and cannot drift out of
+sync with the log. This matters more with a file-based backend than it would with a
+database: there is no server to compute them, and no chance of a stored total disagreeing
+with the rows it came from.
 
-`days_since` is deliberately **absent** from those views. It would have to be computed
-against the server's UTC date, while the client counts from local midnight — the exact
-off-by-one `domain/date.ts` exists to prevent, and it feeds the picker's rest-day rule.
-`last_worn` is a timezone-free fact; the client derives the rest from it.
+`days_since` in particular is always computed locally. Deriving it server-side would mean
+using a UTC date while the client counts from local midnight — the exact off-by-one
+`domain/date.ts` exists to prevent, and it feeds the picker's rest-day rule. `last_worn`
+is a timezone-free fact; everything else follows from it.
 
 ### Deletes are soft
 
@@ -181,8 +236,14 @@ A soft delete does **not** cascade. Deleting a polish leaves its wear rows live,
 deliberate — the manicures still happened, and Undo has to be able to put the bottle back
 without reconstructing history. The visible consequence is that the log keeps those rows
 and labels them "Deleted polish", while the collection, the stats and the picker no longer
-see them. Note that the SQL's `on delete cascade` therefore never fires in normal use; it
-is a guard for a hard delete, and a hard delete *would* take the wear history with it.
+see them.
+
+Two consequences of that are still open questions rather than settled design; both are
+written up in [`docs/pre-persistence-audit.md`](docs/pre-persistence-audit.md).
+
+With the repository as the backend there is a second layer of undo underneath all of
+this: every change is a commit, so anything at all is recoverable with `git revert`, even
+a mistake the app has no button for.
 
 ## Accessibility
 
