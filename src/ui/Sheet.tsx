@@ -190,6 +190,56 @@ export function Sheet({
     };
   }
 
+  /**
+   * `will-change: transform`, scoped to only while something is actually moving the
+   * panel — never left on permanently.
+   *
+   * A composited ancestor is a real, documented way for a WebKit-family browser to drop
+   * native momentum scrolling for a touch-scrolling descendant, and `.sheet__body` is
+   * exactly that descendant: `overflow-y: auto` on a child of a permanently-composited
+   * `.sheet__panel`. Reported directly: a touch-drag inside an open sheet did not scroll
+   * at all, it just registered as a tap wherever the finger landed — which is what a
+   * touch sequence looks like when the browser never recognises it as a scroll gesture
+   * to begin with. Composited only for the ~320ms an animation or a drag is actually
+   * happening removes the one thing in this file that stayed composited for the sheet's
+   * entire open duration.
+   */
+  function beginTransformActivity(panel: HTMLElement): void {
+    panel.style.willChange = 'transform';
+  }
+
+  function endTransformActivity(panel: HTMLElement): void {
+    panel.style.willChange = 'auto';
+  }
+
+  /**
+   * Stop an animation without leaving it running forever.
+   *
+   * `fill: 'both'` is what keeps the panel visually in place once an animation finishes
+   * — cancelling it outright would snap the panel back to its unanimated CSS position.
+   * But a `fill: 'both'` animation that is never cancelled stays in the 'finished' play
+   * state indefinitely, which keeps its target composited for as long as the sheet is
+   * open — the same problem `will-change` caused, from a different source. Committing
+   * bakes the current value into a plain inline style, then cancelling removes the
+   * animation itself; the panel does not move, because the inline style already says
+   * where the animation left it.
+   *
+   * Guarded by identity: by the time `.finished` resolves, a newer animation (a drag, a
+   * close) may already have replaced this one in `animation.current`, and settling a
+   * stale animation would stomp on whatever that newer one is doing.
+   */
+  function settleWhenFinished(anim: Animation, panel: HTMLElement): void {
+    anim.finished
+      .then(() => {
+        if (animation.current !== anim) return;
+        anim.commitStyles();
+        anim.cancel();
+        endTransformActivity(panel);
+      })
+      // cancel() rejects `finished`; that is a normal outcome here, not an error.
+      .catch(() => {});
+  }
+
   /** Mount, show, lock the page — and undo all of it on the way out. */
   useLayoutEffect(() => {
     if (!mounted) return;
@@ -237,6 +287,7 @@ export function Sheet({
       : { transform: 'translateY(0px)', opacity: '1' };
 
     animation.current?.cancel();
+    beginTransformActivity(panel);
     animation.current = panel.animate([from, to], {
       duration: prefersReducedMotion() ? 0 : DURATION_MS,
       easing: EASING,
@@ -244,6 +295,7 @@ export function Sheet({
       // panel is never painted at its resting position for a frame first.
       fill: 'both',
     });
+    settleWhenFinished(animation.current, panel);
 
     return () => {
       mountedSheets.delete(evict);
@@ -253,6 +305,7 @@ export function Sheet({
       dialog.removeEventListener('pointerdown', syncPanelHeight);
       animation.current?.cancel();
       animation.current = null;
+      endTransformActivity(panel);
       unlockBodyScroll();
       if (dialog.open) dialog.close();
       // Focus goes back where it came from, so dismissing does not drop the user at the
@@ -278,6 +331,7 @@ export function Sheet({
     const distance = isBottomSheet() ? travel(panel) : 12;
 
     animation.current?.cancel();
+    beginTransformActivity(panel);
     const exit = panel.animate(
       isBottomSheet()
         ? [{ transform: `translateY(${current}px)` }, { transform: `translateY(${distance}px)` }]
@@ -317,6 +371,7 @@ export function Sheet({
     // Hand control of the transform from the animation to the inline style.
     animation.current?.cancel();
     animation.current = null;
+    beginTransformActivity(panel);
     panel.style.transform = 'translateY(0px)';
 
     gesture.current = { startY: event.clientY, startedAt: performance.now(), offset: 0 };
@@ -356,6 +411,7 @@ export function Sheet({
       [{ transform: `translateY(${offset}px)` }, { transform: 'translateY(0px)' }],
       { duration: prefersReducedMotion() ? 0 : DURATION_MS, easing: EASING, fill: 'both' },
     );
+    settleWhenFinished(animation.current, panel);
     panel.style.transform = '';
   }
 

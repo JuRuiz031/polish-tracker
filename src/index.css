@@ -1577,7 +1577,10 @@ dialog.sheet {
      CSS put the panel somewhere unintended for a frame — a percentage transform
      resolving against a not-yet-final height, a class landing a frame late, two rules
      animating the same property. A stylesheet that never moves it cannot do that. */
-  will-change: transform;
+  /* NO will-change here either, not even permanently on transform — see Sheet.tsx, which
+     sets and clears it around each animation/drag. A composited ancestor is a real, known
+     way for a WebKit-family browser to drop native momentum scroll on a touch-scrolling
+     child (.sheet__body), and this element sat composited for its entire open duration. */
   outline: none; /* focused programmatically for screen readers, not for display */
 }
 
