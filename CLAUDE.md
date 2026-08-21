@@ -13,7 +13,8 @@ todo app would justify.
 
 ## Where we left off (last session)
 
-Persistence is built and working end to end. `main` has:
+Persistence, the export/restore round trip, and PWA install are all built and verified
+end to end. `main` has:
 
 1. The wheel animation fix
 2. Postgres schema audit + fixes + validation (now **shelved** — see below)
@@ -21,36 +22,77 @@ Persistence is built and working end to end. `main` has:
 4. First-run setup screen and the four connection states
 5. Write-side validation
 6. Offline-first writes with row-level reconciliation
+7. **Backup screen** — download and restore, wired to the existing `data/transfer/` layer
+8. **PWA install** — manifest, icons, service worker; offline reload now works
+9. **Both open design decisions settled** and the storage/growth question the owner
+   raised is answered with real numbers — see `docs/pre-persistence-audit.md`'s
+   "Resolved" section, not "Known gaps" below (moved there once this actually happened)
+10. **Deployed to GitHub Pages** — live at `https://juruiz031.github.io/polish-tracker/`,
+    auto-deploys on every push to `main` via `.github/workflows/deploy-pages.yml`. Served
+    from a **subpath**, not the domain root — see "GitHub Pages subpath" below before
+    touching `vite.config.ts`, `index.html`, or `App.tsx`'s router.
 
 **Next up, in order:**
 
 | | What | Why |
 |---|---|---|
-| 1 | **Export screen** | Wire up `src/data/transfer/` — it is fully written and tested but imported by *nothing*. This is what makes her data independent of GitHub, the owner's account, and this app. Agreed as the next task. |
-| 2 | **JSON import (restore)** | Pairs with export to give her local backups. Use `importJson`, which reads our own format. |
-| 3 | **PWA install** (manifest + service worker) | Load-bearing, not polish. See "known gaps". |
-| 4 | Photos | `photo_path` exists on the row type; nothing uploads to it. |
+| 1 | **Batched bulk import** of her original spreadsheet | Explicitly deprioritised (below), but if it ever happens it needs one commit, not one per row — the batch path (`Repository.replaceAll`) already exists and JSON restore already uses it; a CSV importer would just need to build a merged `Snapshot` the same way `store.tsx`'s `importBackup` does. |
+| 2 | Beta test with the actual owner (Anabel), a few hours, on real device(s) | Everything below this line is written/simulated; nothing has been driven by the person it's for yet. |
 
-**Explicitly deprioritised:** importing her original spreadsheet. `importCollectionCsv`
-exists but its column aliases are guesses, and she only has ~50 polishes — entering them
-by hand once was judged easier and safer than debugging a fragile mapping. Do not spend
-time here unless asked.
+**Explicitly deprioritised:**
+- Importing her original spreadsheet. `importCollectionCsv` exists but its column
+  aliases are guesses, and she only has ~50 polishes — entering them by hand once was
+  judged easier and safer than debugging a fragile mapping. Do not spend time here
+  unless asked.
+- **Photos — cut, not just deferred.** `photo_path` still exists on the row type (it is
+  free — nothing is being un-done), but no upload path will be built while storage is a
+  git repository. Binary blobs committed on every edit is a bad fit for a backend chosen
+  specifically to avoid write amplification and quota surprises; see the README's "Storage:
+  a private repository, not a database" for why that trade-off was made in the first
+  place. Revisit only if this ever moves to a real backend (the shelved Supabase path, or
+  something else) — not before.
 
 ---
 
 ## Known gaps — say these out loud rather than discovering them later
 
-- **Reloading the app while offline fails.** There is no service worker, so the browser
-  cannot fetch the app shell. Offline *data* works fine while the app stays open; force-
-  quitting without signal and reopening does not. This is the strongest argument for
-  doing the PWA phase soon.
-- **Bulk operations commit one at a time.** Importing or adding many rows would produce
-  one commit each. Needs a batch path before any bulk feature ships.
-- **Two open design questions** are written up in `docs/pre-persistence-audit.md` and
-  still need the owner's decision: soft-deleting a polish orphans its wear rows (the
-  log's "N of M" counter disagrees with its own list when filtered), and "how many
-  polishes do I have" has two answers because the Log tile counts archived bottles while
-  the Collection hides them.
+- **Reloading the app while offline now works** — verified with Playwright: install the
+  service worker, reload once so the page is controlled, go offline, reload again, the
+  shell still renders. This was the strongest argument for doing the PWA phase, and it is
+  done. What is *not* tested is a real iOS home-screen install — only the mechanism
+  (`vite-plugin-pwa`, workbox precache, manifest, apple-touch-icon) is verified in
+  Chromium. Confirm on her actual phone during the beta.
+- **`Repository.replaceAll` exists now** — added this session, so bulk writes (JSON
+  restore, and the offline layer's own reconciliation push) go through one commit
+  instead of one per row. If a future bulk feature (CSV import, say) calls `addPolish`
+  in a loop instead of building a `Snapshot` and calling `replaceAll` once, it has
+  regressed back into the write-amplification problem this was built to avoid.
+- **GitHub Pages subpath — the sharp edge in the whole deployment.** The live site is at
+  `/polish-tracker/`, not `/`. Four places have to agree on that or "Add to Home Screen"
+  breaks silently: `vite.config.ts`'s `base` (conditional on `command === 'build'`, since
+  `npm run dev` still needs `/`), the PWA manifest's `start_url`/`scope`/icon paths
+  (derived from that same `base`, not hard-coded), `index.html`'s `%BASE_URL%`-prefixed
+  asset hrefs (root-absolute `/x` paths do NOT get auto-prefixed by Vite the way the
+  module script does — this is the trap), and `App.tsx`'s `<BrowserRouter
+  basename={import.meta.env.BASE_URL}>`. GitHub Pages also has no server-side rewrites,
+  so a reload on any route but `/` hits a real 404 — `public/404.html` redirects back to
+  `index.html` with the path folded into `?redirect=`, and a head script in `index.html`
+  restores it via `history.replaceState` before React Router reads the URL.
+
+  **`vite preview` does not faithfully emulate this** — it does not mount built assets
+  under `base` the way a real static host does, so it will show phantom 404s (or worse,
+  silently serve `index.html` in place of a JS file) that do not reproduce on the actual
+  deployed site. To test a subpath build locally, serve `dist/` from a plain static
+  server rooted so `/polish-tracker/` resolves correctly (e.g. copy `dist/` into a
+  `polish-tracker/` subfolder and run `python3 -m http.server` from its parent) — that is
+  what was actually used to verify this, after `vite preview` gave false negatives.
+- **Storage growth is a solved question, not an assumption.** Measured (not estimated):
+  even heavy use — 300 manicures/year, 50 new polishes/year — projects to 2.21MB after
+  20 years, comfortably inside what the Contents-API blob-endpoint fallback now has real
+  test coverage for (1.77MB, deliberately past that projection). Full numbers and method
+  in `docs/pre-persistence-audit.md`. A rolling 12-month log window was considered and
+  correctly shelved as solving a problem that does not exist yet — do not build it
+  pre-emptively; revisit only if a real file approaches 1MB.
 
 ---
 
@@ -165,11 +207,19 @@ dependency — install it temporarily, then remove it and restore `package-lock.
 
 ```bash
 npm run dev          # seeded in-memory data, no backend needed
-npm test             # 286 tests
+npm test             # 295 tests
 npm run lint         # oxlint
 npx tsc -b           # typecheck
+npm run build        # also verifies the PWA plugin still emits sw.js + manifest.webmanifest
 ./supabase/tests/run.sh --clean   # 47 assertions against a throwaway PG17 (shelved schema)
 ```
+
+Browser-testing the PWA/offline behavior needs Playwright, which is not a dependency —
+install it temporarily (`npm install -D playwright && npx playwright install chromium`),
+run against `npm run preview` (the service worker only exists in a production build, not
+`npm run dev`), then `npm uninstall playwright && git checkout package-lock.json`. Browsers
+are cached under `~/.cache/ms-playwright` between sessions, so the install step is usually
+instant.
 
 Run all four before committing. The contrast audit fails the build on a regression, which
 is intentional.

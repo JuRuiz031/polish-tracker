@@ -182,6 +182,15 @@ export class InMemoryRepository implements Repository {
     return this.setDeleted(this.data.wishlist, id, null, 'wishlist item');
   }
 
+  /** `message` exists only to satisfy the interface — nothing here has commits to name. */
+  async replaceAll(next: Snapshot, _message: string): Promise<void> {
+    this.data = {
+      polish: next.polish.map((row) => ({ ...row })),
+      wear: next.wear.map((row) => ({ ...row })),
+      wishlist: next.wishlist.map((row) => ({ ...row })),
+    };
+  }
+
   // ---- Internals ---------------------------------------------------------------
 
   private require<T extends { id: string }>(rows: T[], id: string, label: string): T {

@@ -274,4 +274,13 @@ export class OfflineRepository implements Repository {
       'Bought a wishlist item',
     );
   }
+
+  /**
+   * The caller (a JSON restore) already merged the incoming rows with whatever `load()`
+   * last returned, so this only needs to adopt that result locally and let the normal
+   * background push carry it up — one commit, same as every other write here.
+   */
+  replaceAll(next: Snapshot, message: string): Promise<void> {
+    return this.write(() => this.local.replaceAll(next, message), message);
+  }
 }

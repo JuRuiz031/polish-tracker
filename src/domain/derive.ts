@@ -78,6 +78,8 @@ export function withStats(
 /** Aggregate numbers for the Log screen's stats block. */
 export interface CollectionSummary {
   total_polishes: number;
+  /** Of `total_polishes` — archived bottles are counted in the total, not hidden. */
+  archived: number;
   never_worn: number;
   worn_at_least_once: number;
   manicures_logged: number;
@@ -85,6 +87,22 @@ export interface CollectionSummary {
   most_recent_manicure: IsoDate | null;
 }
 
+/**
+ * `total_polishes` here and the Collection screen's row count can legitimately differ:
+ * this counts every live polish, archived ones included, because "how many bottles do I
+ * own" and "how many can I currently pick from" are different questions and the
+ * Collection view already hides archived bottles by default. Exposing `archived`
+ * separately is what lets the Log screen say "26 (1 archived)" instead of a bare number
+ * that looks like it disagrees with what she sees one tab over — see
+ * docs/pre-persistence-audit.md, "How many polishes do I have".
+ *
+ * `manicures_logged` and `avg_rating` include wears whose polish has since been deleted
+ * — deliberately. The Log still lists those rows as "Deleted polish" (see LogScreen), so
+ * a summary that quietly dropped them would disagree with the list right below it on the
+ * same screen. This is a different population from `mostWorn`/`bestRated` on the Stats
+ * screen, which can only ever show currently-known polishes — that split is inherent to
+ * a per-polish breakdown, not a bug to fix here.
+ */
 export function summarise(
   polishes: readonly PolishWithStats[],
   wears: readonly Wear[],
@@ -104,6 +122,7 @@ export function summarise(
 
   return {
     total_polishes: live.length,
+    archived: live.filter((p) => p.archived).length,
     never_worn: neverWorn,
     worn_at_least_once: live.length - neverWorn,
     manicures_logged: liveWears.length,

@@ -156,34 +156,77 @@ column duplication is stable and small.
 
 ---
 
-## Open — needs a product decision, not a fix
+## Resolved — product decisions
 
 ### Soft-deleting a polish orphans its wear rows
 
 Verified: deleting `OPI Big Apple Red` (2 wears) moved the polish count 26 → 25 while the
 manicure count stayed at 22.
 
-This is defensible — the manicures happened, and Undo has to restore the bottle without
-rebuilding history — and the log already renders those rows as "Deleted polish". Two
-rough edges follow:
+**Decision: keep no-cascade.** The manicures happened, and Undo has to restore the bottle
+without rebuilding history — the owner confirmed this is the correct behavior, not a bug.
+Note that the SQL's `on delete cascade` therefore never fires in normal use: it guards a
+*hard* delete, which the app never performs, and a hard delete *would* correctly take the
+wear history with it.
+
+**Done**, the two rough edges:
 
 - `filterWears` returns `false` for a wear whose polish is missing, so brand and colour
-  filters silently drop orphans while the unfiltered list shows them. The log's "N of M"
-  counter disagrees with its own list in that state.
-- `summary.avg_rating` still includes ratings from deleted polishes, while `mostWorn` and
-  `bestRated` do not. Nothing visibly contradicts on screen today, but they are computed
-  from different populations.
-
-Note that the SQL's `on delete cascade` therefore never fires in normal use. It guards a
-hard delete — and a hard delete *would* take the wear history with it.
+  filters silently dropped orphans while the unfiltered list showed them, with nothing
+  explaining why. `domain/filters.ts` now exports `orphanedWearCount()`, and the Log
+  screen shows a footnote — "N manicures are for a polish that was deleted, so brand and
+  color can't match them" — whenever a brand or colour filter is active and at least one
+  such row exists.
+- `summary.avg_rating` and `summary.manicures_logged` still include ratings/counts from
+  deleted polishes, while `mostWorn` and `bestRated` (Stats screen) still cannot — kept as
+  is, and documented in `derive.ts` as intentional rather than closed as a bug. The Log
+  screen renders those same rows as "Deleted polish" right below the summary, so a summary
+  that quietly dropped them would disagree with the list under it on the same screen. The
+  Stats screen split is a different, unavoidable population — a per-polish breakdown
+  structurally cannot show a polish that no longer exists.
 
 ### "How many polishes do I have" has two answers
 
-Verified: the log's **Polishes** tile reads 26, the collection list shows 25, because one
+Verified: the log's **Polishes** tile read 26, the collection list showed 25, because one
 bottle is archived and `filterPolishes` hides archived rows by default while `summarise`
-counts them. Same split on **Never worn** (9). Both are defensible in isolation — stats
-deliberately include archived bottles, the collection deliberately hides them — but
-nothing explains the difference. Cheapest fix is a label: "26 owned (1 archived)".
+counted them. Same split on **Never worn** (9) — left as is; once the Polishes tile
+explains itself, the Never-worn split needs no separate footnote.
+
+**Done.** `CollectionSummary` gained an `archived` field, and the Log's **Polishes** tile
+now reads "26 (1 archived)" whenever `archived > 0` — the cheapest fix, as noted above,
+now shipped.
+
+### Storage and memory, checked for multi-year growth
+
+Asked by the owner directly: is the one-JSON-file design still fine after years of use?
+Measured, not guessed — real row sizes via `JSON.stringify(row, null, 2)`, the actual
+format `serialise()` writes:
+
+| Usage | Wears/yr | New polishes/yr | File size after 20 years |
+|---|---|---|---|
+| Moderate | 150 | 30 | 1.15 MB |
+| Heavy | 300 | 50 | 2.21 MB |
+
+The only real ceiling in this design is the GitHub Contents API's 1MB inline limit —
+`readFile()` already falls back to the blob endpoint above that, but until now the
+fallback path had **zero test coverage**; the "tested at 1.88MB" note in an earlier
+version of this file was a one-off manual check, not a committed test. Added
+`githubRepository.test.ts`'s "falls back to the blob endpoint for a file too large to
+inline" — an ~8000-wear, 700-polish snapshot (1.77MB), deliberately sized past the heavy
+20-year projection above, not just past 1MB.
+
+Everything else checked out with margin: git deltas near-identical successive JSON
+snapshots efficiently, so the repository's on-disk history size stays well under any
+GitHub limit even after thousands of commits; IndexedDB and in-memory React state are
+non-issues at these sizes; a multi-MB PUT to the Contents API still completes in a second
+or two, which does not matter anyway since writes are backgrounded
+(`data/repositories/offline.ts`).
+
+**Not built, floated by the owner and deliberately shelved:** pruning the log to a rolling
+window (e.g. only the last 12 months) to bound orphan growth. Correctly identified as not
+a current problem — the numbers above show it is not becoming one for a long time — so no
+code changes were made. Worth revisiting only if a future audit finds the file size is
+actually approaching the 1MB boundary in practice, not on a schedule.
 
 ---
 

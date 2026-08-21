@@ -129,4 +129,32 @@ describe('summarise', () => {
     expect(summary.avg_rating).toBeNull();
     expect(summary.most_recent_manicure).toBeNull();
   });
+
+  it('counts archived polishes in the total and reports them separately', () => {
+    const polishes = withStats(
+      [makePolish({ id: 'p1', archived: false }), makePolish({ id: 'p2', archived: true })],
+      [],
+      TODAY,
+    );
+    const summary = summarise(polishes, []);
+
+    // Deliberate: total_polishes includes the archived bottle even though the
+    // Collection screen hides it by default. See the `archived` field's doc comment.
+    expect(summary.total_polishes).toBe(2);
+    expect(summary.archived).toBe(1);
+  });
+
+  it('includes a rating from a wear whose polish was since deleted', () => {
+    // The Log still lists this row as "Deleted polish" — the summary above it on the
+    // same screen has to agree with what she can scroll down and see.
+    const polishes = withStats([makePolish({ id: 'p1' })], [], TODAY);
+    const wears = [
+      makeWear({ polish_id: 'p1', rating: 4 }),
+      makeWear({ polish_id: 'now-deleted', rating: 2 }),
+    ];
+    const summary = summarise(polishes, wears);
+
+    expect(summary.manicures_logged).toBe(2);
+    expect(summary.avg_rating).toBe(3); // (4 + 2) / 2
+  });
 });

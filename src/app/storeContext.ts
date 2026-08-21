@@ -2,7 +2,7 @@ import { createContext, useContext } from 'react';
 import type { WishlistFlags } from '../domain/dedupe';
 import type { CollectionSummary } from '../domain/derive';
 import type { Polish, PolishWithStats, Wear, WishlistItem } from '../domain/types';
-import type { PolishInput, WearInput, WishlistInput } from '../domain/schema';
+import type { ExportBundle, PolishInput, WearInput, WishlistInput } from '../domain/schema';
 
 /**
  * The store's shape and its accessor, kept apart from the provider component so that
@@ -26,6 +26,8 @@ export interface StoreValue {
   allPolishes: Polish[];
   wears: Wear[];
   wishlist: WishlistItem[];
+  /** Includes soft-deleted rows. For export — a backup is not a view. */
+  allWishlist: WishlistItem[];
 
   duplicateIds: Set<string>;
   wishlistFlags: WishlistFlags;
@@ -44,6 +46,13 @@ export interface StoreValue {
   removeWishlistItem: (id: string) => Promise<void>;
   /** "I bought it": copy into the collection and resolve the wishlist row as Bought. */
   buyWishlistItem: (item: WishlistItem) => Promise<void>;
+
+  /**
+   * Restore a JSON backup. Merged row-by-row with what is here now (same last-write-wins
+   * rule the offline layer uses to reconcile two devices) rather than replacing outright,
+   * so importing an old file cannot silently undo something more recent.
+   */
+  importBackup: (bundle: ExportBundle) => Promise<void>;
 
   toast: Toast | null;
   showToast: (toast: Toast) => void;

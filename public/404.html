@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Polish</title>
+    <!--
+      GitHub Pages has no server-side rewrites — a static host only has a real file at
+      "/", so a deep link or a reload on any other route (e.g. /polish-tracker/collection)
+      hits this 404 page instead of index.html. This is the standard workaround: encode
+      the intended path into a query string and redirect to the real app, which decodes it
+      back on the other side (see the script in index.html). Without this, "Add to Home
+      Screen" would open fine but any reload inside the app would break.
+    -->
+    <script>
+      var path = location.pathname + location.search + location.hash;
+      location.replace(location.origin + '/polish-tracker/?redirect=' + encodeURIComponent(path));
+    </script>
+  </head>
+  <body></body>
+</html>

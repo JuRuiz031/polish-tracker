@@ -9,10 +9,17 @@ nothing that expires.
 
 ## Status
 
-**The UI is complete and driveable on seeded data; persistence is being wired up.** Every
-screen works against an in-memory repository, so the whole app can be used and judged
-before any backend exists. Nothing persists yet: reloading the page resets to the seed,
-and an unmissable banner says so.
+**The app is feature-complete and built: persistence, export/restore, and PWA install
+are all in and verified.** "Look around first" on the setup screen still opens an
+in-memory demo — useful for trying the app with no key — and an unmissable banner marks
+it as sample data that resets on reload. A real key connects to her actual collection,
+stored durably in a private GitHub repository. What has not happened yet is a beta test
+by the person the app is actually for.
+
+**Live:** https://juruiz031.github.io/polish-tracker/ — deploys automatically on every
+push to `main` via `.github/workflows/deploy-pages.yml`. Served from a subpath; see
+CLAUDE.md's "GitHub Pages subpath" note before changing `vite.config.ts`, `index.html`,
+or the router.
 
 ### Storage: a private repository, not a database
 
@@ -47,17 +54,22 @@ ceiling. Going multi-user later means a real backend and a migration.
 | 4 | Import / export layer | JSON + CSV both directions, with round-trip tests. Code complete, not yet wired to a screen |
 | 5 | Postgres schema | Written, audited, fixed, and validated against real PG17 — now **shelved**, see below |
 | 6 | GitHub storage layer | `GitHubRepository` + Contents API client, behind the existing interface. Tested against a mocked API |
+| 7 | Setup screen + wiring | Paste a token, verify write access, store it, swap the repository in `app/store.tsx` |
+| 8 | Offline cache | A full local copy so the app works with no signal, and a failed write is queued rather than lost |
+| 9 | Backup screen | Download and restore, wired to the phase-4 layer. Restore merges rather than replaces, through the same row-level rule the offline layer uses to reconcile two devices |
+| 10 | PWA install | Manifest + service worker + icons. Verified with Playwright: install, go offline, reload — the app shell still loads |
 
 ### Next
 
 | # | Phase | Detail |
 |---|---|---|
-| 7 | **Setup screen + wiring** | **Next** — paste a token, verify write access, store it, swap the repository in `app/store.tsx` |
-| 8 | Export screen | Wire up the phase-4 layer. This is what makes her data independent of every account involved |
-| 9 | Offline cache | A full local copy so the app works with no signal, and a failed write is queued rather than lost |
-| 10 | PWA install | Manifest + service worker. Load-bearing for data safety — see below |
-| 11 | Batched bulk import | Importing her spreadsheet must be **one** commit, not one per polish |
-| 12 | Photos | `photo_path` exists on the row type; nothing uploads to it yet |
+| 11 | Two open design decisions | Written up in [`docs/pre-persistence-audit.md`](docs/pre-persistence-audit.md) — waiting on the owner, not on engineering |
+| 12 | Beta test | Everything above is built and simulated; nothing has been driven by the person it's for yet |
+
+**Cut, not deferred: photos.** `photo_path` still exists on the row type, but no upload
+path will be built while storage is a git repository — binary blobs committed on every
+edit defeats the reason this backend was chosen in the first place (see below). Revisit
+only if this ever moves to a real backend.
 
 ### Why PWA install matters more than it looks
 
@@ -119,7 +131,7 @@ npm run dev          # opens on the seeded in-memory data
 ```
 
 ```bash
-npm test            # 245 tests: domain logic, storage layer, contrast audit, round trip
+npm test            # 295 tests: domain logic, storage layer, contrast audit, round trip
 npm run coverage    # domain/ is held to 90% statements
 npm run lint        # oxlint
 npx tsc -b          # typecheck

@@ -10,6 +10,7 @@ import {
   brandNames,
   filterPolishes,
   filterWears,
+  orphanedWearCount,
 } from '../filters';
 import { makePolish, makeWear } from './factories';
 
@@ -211,6 +212,25 @@ describe('filterWears', () => {
     expect(filterWears(orphan, polishes, DEFAULT_LOG_FILTER)).toHaveLength(1);
     // Asked "was it an OPI?", there is no honest answer, so it drops out.
     expect(filterWears(orphan, polishes, { ...DEFAULT_LOG_FILTER, brand: 'OPI' })).toHaveLength(0);
+  });
+});
+
+describe('orphanedWearCount', () => {
+  const opi = makePolish({ brand: 'OPI', name: 'Red' });
+
+  it('is zero when every wear resolves to a known polish', () => {
+    const wears = [makeWear({ polish_id: opi.id })];
+    expect(orphanedWearCount(wears, [opi])).toBe(0);
+  });
+
+  it('counts a wear whose polish was deleted', () => {
+    const wears = [makeWear({ polish_id: opi.id }), makeWear({ polish_id: 'gone' })];
+    expect(orphanedWearCount(wears, [opi])).toBe(1);
+  });
+
+  it('ignores an already soft-deleted wear — it is not shown either way', () => {
+    const wears = [makeWear({ polish_id: 'gone', deleted_at: 'x' })];
+    expect(orphanedWearCount(wears, [opi])).toBe(0);
   });
 });
 

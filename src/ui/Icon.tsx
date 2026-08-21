@@ -28,7 +28,9 @@ export type IconName =
   | 'trash'
   | 'archive'
   | 'bag'
-  | 'chart';
+  | 'chart'
+  | 'download'
+  | 'upload';
 
 export function Icon({
   name,
@@ -136,6 +138,20 @@ const PATHS: Record<IconName, React.ReactNode> = {
     <>
       <path d="M5 8h14l-1 12.5H6z" />
       <path d="M8.5 8V6a3.5 3.5 0 017 0v2" />
+    </>
+  ),
+  // Closed shapes (an arrow polygon, not open stroke lines) so the Backup nav tab can
+  // fill it the same way as chart/grid/archive.
+  download: (
+    <>
+      <path d="M9.5 3h5v7h3.5l-6 6.5-6-6.5H9.5z" />
+      <rect x="4" y="18.5" width="16" height="2.2" rx="1.1" />
+    </>
+  ),
+  upload: (
+    <>
+      <path d="M9.5 14.5h5v-7h3.5l-6-6.5-6 6.5H9.5z" />
+      <rect x="4" y="18.5" width="16" height="2.2" rx="1.1" />
     </>
   ),
 };

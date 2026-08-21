@@ -89,6 +89,20 @@ export function filterPolishes(
   });
 }
 
+/**
+ * Wear rows still logged whose polish has since been soft-deleted.
+ *
+ * Visible in the unfiltered log as "Deleted polish", but structurally unreachable the
+ * moment a brand or color filter is chosen — there is no brand or color left to test
+ * against (see `filterWears`). Used to explain that gap on screen rather than leaving it
+ * silent: see docs/pre-persistence-audit.md, "Soft-deleting a polish orphans its wear
+ * rows".
+ */
+export function orphanedWearCount(wears: readonly Wear[], polishes: readonly Polish[]): number {
+  const known = new Set(polishes.map((polish) => polish.id));
+  return wears.filter((wear) => wear.deleted_at === null && !known.has(wear.polish_id)).length;
+}
+
 // ---- Log -----------------------------------------------------------------------
 
 export interface LogFilter {

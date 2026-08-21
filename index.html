@@ -2,10 +2,33 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <!-- %BASE_URL% rather than a bare "/" — Vite does NOT auto-prefix root-absolute
+         hrefs to public/ assets with `base` the way it does the module script below, so
+         a hard-coded "/" here would 404 once this is served from a subpath. -->
+    <link rel="icon" type="image/svg+xml" href="%BASE_URL%favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#FFFBFC" />
     <meta name="description" content="Nail polish collection, wear log, and wishlist." />
+
+    <!-- GitHub Pages has no server-side rewrites: a reload on any route but "/" hits
+         404.html, which redirects here with the intended path in ?redirect=. This restores
+         it via history.replaceState BEFORE React Router reads the URL on mount, so a deep
+         link or a plain reload lands back where it was instead of always showing Tonight. -->
+    <script>
+      (function () {
+        var redirect = new URLSearchParams(location.search).get('redirect');
+        if (redirect) history.replaceState(null, '', redirect);
+      })();
+    </script>
+
+    <!-- iOS ignores the web manifest's icons and display mode; it only reads these. No
+         apple-touch-icon here means the home screen falls back to a screenshot of the
+         page, and no apple-mobile-web-app-capable means it opens as a browser tab rather
+         than a standalone app — which is what makes the offline storage exemption real. -->
+    <link rel="apple-touch-icon" href="%BASE_URL%apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Polish" />
 
     <!-- Atkinson Hyperlegible Next: a legibility face built by the Braille Institute for
          character disambiguation. Bricolage Grotesque carries display text only. -->

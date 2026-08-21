@@ -13,6 +13,7 @@ import {
   availablePeriods,
   brandNames,
   filterWears,
+  orphanedWearCount,
   type LogFilter,
 } from '../../domain/filters';
 
@@ -60,6 +61,8 @@ export function LogScreen() {
 
   const filterCount = activeLogFilterCount(filters);
   const totalLogged = wears.filter((wear) => wear.deleted_at === null).length;
+  const orphaned = useMemo(() => orphanedWearCount(wears, polishes), [wears, polishes]);
+  const orphansHidden = orphaned > 0 && (filters.brand !== ANY || filters.color !== ANY);
 
   /** Grouped by month so a long log stays scannable. */
   const months = useMemo(() => {
@@ -90,7 +93,14 @@ export function LogScreen() {
       </header>
 
       <section className="summary" aria-label="Collection summary">
-        <SummaryStat label="Polishes" value={String(summary.total_polishes)} />
+        <SummaryStat
+          label="Polishes"
+          value={
+            summary.archived > 0
+              ? `${summary.total_polishes} (${summary.archived} archived)`
+              : String(summary.total_polishes)
+          }
+        />
         <SummaryStat label="Never worn" value={String(summary.never_worn)} />
         <SummaryStat label="Manicures" value={String(summary.manicures_logged)} />
         <SummaryStat
@@ -116,6 +126,13 @@ export function LogScreen() {
           </>
         )}
       </div>
+
+      {orphansHidden && (
+        <p className="section-note">
+          {orphaned} {orphaned === 1 ? 'manicure is' : 'manicures are'} for a polish that
+          was deleted, so brand and color can't match {orphaned === 1 ? 'it' : 'them'}.
+        </p>
+      )}
 
       {entries.length === 0 && filterCount > 0 ? (
         <EmptyState

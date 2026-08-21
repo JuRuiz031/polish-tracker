@@ -13,6 +13,7 @@ import { CollectionScreen } from '../features/collection/CollectionScreen';
 import { LogScreen } from '../features/log/LogScreen';
 import { WishlistScreen } from '../features/wishlist/WishlistScreen';
 import { StatsScreen } from '../features/stats/StatsScreen';
+import { DataScreen } from '../features/data/DataScreen';
 
 /**
  * The app shell.
@@ -32,6 +33,7 @@ const TABS: { to: string; label: string; icon: IconName }[] = [
   { to: '/log', label: 'Log', icon: 'calendar' },
   { to: '/wishlist', label: 'Wishlist', icon: 'heart' },
   { to: '/stats', label: 'Stats', icon: 'chart' },
+  { to: '/backup', label: 'Backup', icon: 'download' },
 ];
 
 export default function App() {
@@ -74,7 +76,10 @@ export default function App() {
     // `key` forces a fresh provider when the backend changes, so leaving demo mode
     // cannot leave the seeded collection on screen over her real data.
     <StoreProvider key={mode} repository={repository ?? undefined}>
-      <BrowserRouter>
+      {/* GitHub Pages serves this app from a subpath (see vite.config.ts's `base`);
+          import.meta.env.BASE_URL carries that same value, so every route stays under
+          it instead of resolving against the domain root. */}
+      <BrowserRouter basename={import.meta.env.BASE_URL}>
         <Shell mode={mode} onReconnect={reset} repository={repository} />
       </BrowserRouter>
     </StoreProvider>
@@ -141,6 +146,7 @@ function Shell({
             <Route path="/log" element={<LogScreen />} />
             <Route path="/wishlist" element={<WishlistScreen />} />
             <Route path="/stats" element={<StatsScreen />} />
+            <Route path="/backup" element={<DataScreen />} />
             <Route path="*" element={<Navigate to="/tonight" replace />} />
           </Routes>
         )}

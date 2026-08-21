@@ -51,4 +51,14 @@ export interface Repository {
     polishId: string,
     boughtOn: IsoDate,
   ): Promise<WishlistItem>;
+
+  /**
+   * Replace the stored collection wholesale, in one write.
+   *
+   * Exists for the offline layer's reconciliation push and for restoring a JSON backup —
+   * both already have a full merged snapshot in hand, and applying it row by row would
+   * turn a single restore into hundreds of commits. The caller is responsible for
+   * merging first; this does not merge on its own.
+   */
+  replaceAll(next: Snapshot, message: string): Promise<void>;
 }

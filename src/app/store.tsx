@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { today } from '../domain/date';
 import { findDuplicates, flagWishlist } from '../domain/dedupe';
 import { summarise, withStats } from '../domain/derive';
+import { mergeSnapshots } from '../domain/merge';
+import type { ExportBundle } from '../domain/schema';
 import { InMemoryRepository } from '../data/repositories/memory';
 import type { Repository, Snapshot } from '../data/repositories/types';
 import { StoreContext, type StoreValue, type Toast } from './storeContext';
@@ -118,6 +120,7 @@ export function StoreProvider({
       allPolishes: snapshot.polish,
       wears: snapshot.wear,
       wishlist: snapshot.wishlist.filter((row) => row.deleted_at === null),
+      allWishlist: snapshot.wishlist,
 
       duplicateIds: findDuplicates(snapshot.polish),
       wishlistFlags: flagWishlist(snapshot.wishlist, snapshot.polish),
@@ -198,6 +201,16 @@ export function StoreProvider({
           archived: false,
         });
         await repo.markWishlistItemBought(item.id, polish.id, today());
+        await refresh();
+      },
+
+      importBackup: async (bundle: ExportBundle) => {
+        const merged = mergeSnapshots(snapshot, {
+          polish: bundle.polish,
+          wear: bundle.wear,
+          wishlist: bundle.wishlist,
+        }) as Snapshot;
+        await repo.replaceAll(merged, 'Import backup');
         await refresh();
       },
 

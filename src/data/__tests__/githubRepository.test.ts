@@ -132,6 +132,52 @@ describe('load', () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(fileBody('{ broken')));
     await expect(new GitHubRepository(TARGET).load()).rejects.toThrow(/not valid JSON/i);
   });
+
+  /**
+   * The Contents API only inlines `content` below 1MB. A collection this size is well
+   * past what she will realistically log in a lifetime (projected: ~2.2MB after 20
+   * years at 300 manicures/year — see CLAUDE.md's storage-growth note), but it is
+   * exactly the file size that would otherwise come back with an empty `content` and
+   * silently load as empty, so the size chosen here is deliberately past that real-world
+   * ceiling rather than just past 1MB.
+   */
+  it('falls back to the blob endpoint for a file too large to inline', async () => {
+    const big: Snapshot = {
+      polish: Array.from({ length: 700 }, (_, i) => ({
+        id: `p${i}`, user_id: 'owner', brand: 'OPI', name: `Shade ${i}`, color: 'Red',
+        finish: 'Cream', swatch_hex: '#C8102E', photo_path: null, notes: null,
+        archived: false, created_at: 't', updated_at: 't', deleted_at: null,
+      })),
+      wear: Array.from({ length: 8000 }, (_, i) => ({
+        id: `w${i}`, user_id: 'owner', polish_id: `p${i % 700}`, worn_on: '2026-01-01',
+        rating: 4, days_lasted: 6, notes: null, created_at: 't', updated_at: 't', deleted_at: null,
+      })),
+      wishlist: [],
+    };
+    const text = serialise(big);
+    expect(Buffer.byteLength(text)).toBeGreaterThan(2 * 1024 * 1024); // comfortably past 1MB
+
+    const contentsResponse = {
+      ok: true, status: 200,
+      json: async () => ({ content: '', sha: 'bigsha', size: Buffer.byteLength(text) }),
+    } as unknown as Response;
+    const blobResponse = {
+      ok: true, status: 200,
+      json: async () => ({ content: encodeBase64(text), encoding: 'base64' }),
+    } as unknown as Response;
+
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(contentsResponse)
+      .mockResolvedValueOnce(blobResponse);
+    vi.stubGlobal('fetch', fetchMock);
+
+    const loaded = await new GitHubRepository(TARGET).load();
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(String(fetchMock.mock.calls[1][0])).toContain('/git/blobs/bigsha');
+    expect(loaded.polish).toHaveLength(700);
+    expect(loaded.wear).toHaveLength(8000);
+  });
 });
 
 describe('writing', () => {

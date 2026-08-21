@@ -114,6 +114,58 @@ describe('working offline', () => {
   });
 });
 
+describe('restoring a backup (replaceAll)', () => {
+  it('is visible locally immediately, same as any other write', async () => {
+    const remote = new FakeRemote();
+    const repo = new OfflineRepository(remote, empty());
+    await repo.load();
+
+    const restored: Snapshot = {
+      polish: [{ id: 'p1', user_id: 'u', ...POLISH, created_at: 't', updated_at: 't', deleted_at: null }],
+      wear: [],
+      wishlist: [],
+    };
+    await repo.replaceAll(restored, 'Import backup');
+
+    expect((await repo.load()).polish).toHaveLength(1);
+  });
+
+  it('pushes the restored snapshot to the remote in the background', async () => {
+    const remote = new FakeRemote();
+    const repo = new OfflineRepository(remote, empty());
+    await repo.load();
+
+    const restored: Snapshot = {
+      polish: [{ id: 'p1', user_id: 'u', ...POLISH, created_at: 't', updated_at: 't', deleted_at: null }],
+      wear: [],
+      wishlist: [],
+    };
+    await repo.replaceAll(restored, 'Import backup');
+    await settle();
+
+    expect(remote.snapshot.polish).toHaveLength(1);
+    expect(repo.getState()).toMatchObject({ status: 'synced', pending: false });
+  });
+
+  it('does not throw when restoring with no network — it queues like everything else', async () => {
+    const remote = new FakeRemote();
+    const repo = new OfflineRepository(remote, empty());
+    await repo.load();
+
+    remote.reachable = false;
+    const restored: Snapshot = {
+      polish: [{ id: 'p1', user_id: 'u', ...POLISH, created_at: 't', updated_at: 't', deleted_at: null }],
+      wear: [],
+      wishlist: [],
+    };
+    await repo.replaceAll(restored, 'Import backup');
+    await settle();
+
+    expect((await repo.load()).polish).toHaveLength(1); // safe on this device
+    expect(repo.getState().status).toBe('offline');
+  });
+});
+
 describe('reconciling with the other device', () => {
   it('a change made elsewhere while offline is not trampled', async () => {
     const remote = new FakeRemote();
