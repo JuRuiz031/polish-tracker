@@ -45,6 +45,56 @@ const DISMISS_VELOCITY = 0.5; // px per ms
  */
 const mountedSheets = new Set<() => void>();
 
+/**
+ * Locking background scroll while a sheet is open.
+ *
+ * `overflow: hidden` on `<body>` is the textbook approach and it is NOT enough on iOS
+ * Safari — the page behind a modal keeps scrolling anyway, because iOS does not treat
+ * `overflow: hidden` on `<body>` as a scroll boundary the way every other engine does.
+ * The fix that iOS actually respects is pinning the body with `position: fixed`, which
+ * is why this exists instead of the one-line version.
+ *
+ * Reference-counted rather than a plain set/clear, because `mountedSheets` allows two
+ * sheets to briefly coexist during a handoff (detail closes, edit opens, same commit) —
+ * without counting, the first sheet's cleanup would unlock scrolling out from under the
+ * second, and `window.scrollY` reads 0 while the body is pinned, so a naive re-lock
+ * would forget where the page actually was.
+ */
+let scrollLockCount = 0;
+let savedScrollY = 0;
+let savedPaddingRight = '';
+
+function lockBodyScroll(): void {
+  if (scrollLockCount === 0) {
+    savedScrollY = window.scrollY;
+    savedPaddingRight = document.body.style.paddingRight;
+    // Reserve the scrollbar's width so the page behind does not shift sideways when its
+    // scrolling is disabled. Invisible with overlay scrollbars, obvious on Windows.
+    const gutter = window.innerWidth - document.documentElement.clientWidth;
+    document.body.style.position = 'fixed';
+    document.body.style.top = `-${savedScrollY}px`;
+    document.body.style.left = '0';
+    document.body.style.right = '0';
+    document.body.style.overflow = 'hidden';
+    if (gutter > 0) document.body.style.paddingRight = `${gutter}px`;
+  }
+  scrollLockCount += 1;
+}
+
+function unlockBodyScroll(): void {
+  scrollLockCount = Math.max(0, scrollLockCount - 1);
+  if (scrollLockCount > 0) return;
+  document.body.style.position = '';
+  document.body.style.top = '';
+  document.body.style.left = '';
+  document.body.style.right = '';
+  document.body.style.overflow = '';
+  document.body.style.paddingRight = savedPaddingRight;
+  // Restore exactly where she was — position: fixed disconnects the page from its own
+  // scroll position, so without this closing a sheet would silently drop her at the top.
+  window.scrollTo(0, savedScrollY);
+}
+
 function prefersReducedMotion(): boolean {
   return (
     typeof window !== 'undefined' &&
@@ -106,19 +156,18 @@ export function Sheet({
     mountedSheets.add(evict);
 
     opener.current = document.activeElement;
+
+    // Locked BEFORE showModal(), not after: showModal() auto-focuses the first focusable
+    // child, and that focus can scroll the page to reveal it — so capturing the scroll
+    // position any later than this records wherever that auto-scroll already left it,
+    // not where she actually was.
+    lockBodyScroll();
     if (!dialog.open) dialog.showModal();
 
-    // showModal() focuses the first focusable child, and that focus can scroll a
-    // container to reveal it. Taking focus explicitly, without scrolling, keeps the
-    // browser from nudging anything while the panel is still off-screen.
+    // showModal()'s auto-focus can also scroll a container to reveal it. Taking focus
+    // explicitly, without scrolling, keeps the browser from nudging anything further
+    // while the panel is still off-screen.
     panel.focus({ preventScroll: true });
-
-    // Reserve the width the scrollbar occupied so the page behind does not reflow when
-    // its scrolling is disabled. Invisible with overlay scrollbars, obvious on Windows.
-    const gutter = window.innerWidth - document.documentElement.clientWidth;
-    const previousPadding = document.body.style.paddingRight;
-    document.body.style.overflow = 'hidden';
-    if (gutter > 0) document.body.style.paddingRight = `${gutter}px`;
 
     // Slide in, from measured pixels. On a wide screen the panel is a centred dialog, so
     // it lifts and fades a little rather than travelling the height of the viewport.
@@ -143,8 +192,7 @@ export function Sheet({
       mountedSheets.delete(evict);
       animation.current?.cancel();
       animation.current = null;
-      document.body.style.overflow = '';
-      document.body.style.paddingRight = previousPadding;
+      unlockBodyScroll();
       if (dialog.open) dialog.close();
       // Focus goes back where it came from, so dismissing does not drop the user at the
       // top of the document.
