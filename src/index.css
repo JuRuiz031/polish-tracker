@@ -1483,27 +1483,42 @@ a {
 /* ---- Sheet ------------------------------------------------------------------- */
 
 /*
- * Bottom sheet on a phone, centred dialog on a wide screen. The <dialog> element itself
- * is the full-viewport layer; .sheet__panel is the visible surface, which is what makes
- * "click the backdrop to dismiss" a simple target check in the click handler.
- */
-/*
- * The dialog is the full-viewport layer; .sheet__panel is the visible surface.
+ * Full-screen takeover on a phone, centred dialog on a wide screen. The <dialog> element
+ * itself is the full-viewport layer; .sheet__panel is the visible surface, which is what
+ * makes "click the backdrop to dismiss" a simple target check in the click handler.
  *
- * Selected as `dialog.sheet` rather than `.sheet` on purpose. The UA stylesheet targets
- * `dialog:modal` (specificity 0,1,1), which outranks a bare class (0,1,0) — so its
- * `max-width`/`max-height: calc(100% - 12px)` and its positioning silently won over
- * anything set here. Matching that specificity is what makes this rule authoritative.
+ * The phone version used to be a PARTIAL bottom sheet (88% height, anchored to the
+ * bottom edge with a gap above for the backdrop) — the standard mobile pattern, and it
+ * went through several real, verified fixes for real bugs (scroll-lock, viewport units,
+ * momentum scroll) before a further, currently-unfixed Safari bug surfaced: iOS 26 does
+ * not reliably render `position: fixed`/`sticky` content that reaches toward the bottom
+ * of the screen, where its new floating navigation controls sit — confirmed as an open,
+ * unresolved WebKit issue (developer.apple.com/forums/thread/800798), not something any
+ * amount of CSS in this file can work around.
+ *
+ * Rather than keep patching a shape that is exactly what that bug targets, the phone
+ * layout is now a full-screen view: `inset: 0` on both the dialog and the panel, no
+ * partial height, no viewport-unit math, nothing anchored specifically to the bottom
+ * edge. It cannot fully escape a browser bug, but it removes every other source of
+ * fragility this file accumulated fighting the partial-sheet shape, and a full-screen
+ * take-over for an add/edit form is itself a normal, common mobile pattern — not a
+ * downgrade.
  */
 dialog.sheet {
   position: fixed;
   inset: 0;
+  /* Explicit, not left to `inset: 0` alone: the UA stylesheet's `dialog:modal` sizes a
+   * dialog to fit-content by default, and an explicit `width`/`height` is what actually
+   * overrides that default — `inset: 0` sets the four edges but does not by itself
+   * override a competing explicit width/height rule the way setting width/height
+   * directly does. Without this, the dialog collapsed to 0x0: `inset: 0` on the child
+   * panel below has nothing definite to resolve against once that happens. Percent
+   * rather than a viewport unit here is fine and was never the problem — this element's
+   * containing block is the initial containing block (a `position: fixed` element with
+   * no positioned ancestors), which the spec defines as the viewport itself.
+   */
   width: 100%;
-  /* svh, not %, for the same reason .sheet__panel's max-height is svh below — a
-     percentage here would be the dialog measuring itself, and that self-referential
-     sizing is exactly what went wrong on a real device. `inset: 0` already pins every
-     edge to the viewport; this is belt-and-braces for anything that reads the height. */
-  height: 100svh;
+  height: 100%;
   max-width: none;
   max-height: none;
   margin: 0;
@@ -1531,37 +1546,15 @@ dialog.sheet {
 
 .sheet__panel {
   /*
-   * Pinned to the bottom edge by absolute positioning rather than by flex alignment.
-   * Flex layout made the panel's resting position a function of the dialog's computed
-   * height, so any UA quirk that shortened the dialog moved the sheet — and because
-   * `translateY(100%)` is relative to the panel's own height, a different height also
-   * meant a different travel distance. Anchoring it removes both dependencies: bottom
-   * is bottom, and the height is a constant.
+   * `inset: 0` rather than a height in any unit — percentage, svh, dvh, all of them, in
+   * turn, went wrong on a real device across earlier attempts at this file. Anchoring
+   * all four edges directly is the one sizing approach here that involves no arithmetic
+   * for a browser to get wrong: the panel simply IS the dialog's box, which is itself
+   * `inset: 0` on the viewport. `travel()` in Sheet.tsx (offsetHeight) still works
+   * unchanged — it measures whatever this resolves to, rather than assuming a number.
    */
   position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  width: 100%;
-
-  /* ONE height for every sheet on a phone.
-     Sizing to content meant the detail sheet stopped at 79% of the screen while the
-     filter and add sheets hit the 92% cap — so each modal opened to a different place
-     and the set felt unrelated. A fixed height also makes `translateY(100%)` a constant:
-     when the height could still change after mount (a web font swapping in, an image
-     settling), the transform's meaning changed mid-transition and the panel visibly
-     jumped. */
-  height: 88svh;
-  /* A viewport unit, not a percentage — `max-height: 100%` resolves against the <dialog>
-     element's OWN computed height, and on real iOS Safari that has been observed to
-     resolve to a small, wrong value for a <dialog> shown via showModal(). When that
-     happens `max-height` wins over the explicit `height: 88svh` above it (browsers clamp
-     to the smaller of the two), and the panel renders as a sliver instead of a sheet —
-     this is not hypothetical, it reproduced on a real device. `100svh` sidesteps the
-     dialog's own sizing entirely by measuring the viewport directly, the same fix the
-     desktop breakpoint below already uses (`max-height: 90svh`) — this rule just never
-     matched it. */
-  max-height: 100svh;
+  inset: 0;
   display: flex;
   flex-direction: column;
   background: var(--surface-page);
@@ -1631,6 +1624,12 @@ dialog.sheet {
 }
 
 .sheet__body {
+  /* flex: 1 so this grows to fill whatever the header and footer leave — without it, a
+     flex item only takes the space its content needs, and a short form would leave the
+     rest of a now full-screen panel as dead space below it rather than the body
+     stretching to make that space the scroll container's own, harmless, padding. */
+  flex: 1;
+  min-height: 0;
   padding: var(--space-4);
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
@@ -1818,11 +1817,11 @@ dialog.sheet {
   }
 
   .sheet__panel {
-    /* Back in flow so flex can centre it; the phone's bottom anchoring does not apply. */
+    /* Back in flow so flex can centre it; the phone's edge-to-edge anchoring does not
+       apply. `inset: auto` resets all four edges the mobile rule sets via its own
+       `inset: 0`, not just the three a `bottom`-anchored panel used to need reset. */
     position: relative;
-    left: auto;
-    right: auto;
-    bottom: auto;
+    inset: auto;
     width: min(42rem, 92vw);
     /* Sized to its content, between a floor and a ceiling.
        A pinned height left a filter sheet with a third of itself empty; pure content
