@@ -6,78 +6,174 @@
     <title>Diagnostic</title>
     <style>
       html, body { margin: 0; padding: 0; }
-      body { font-family: -apple-system, sans-serif; }
+      body { font-family: -apple-system, system-ui, sans-serif; font-size: 17px; line-height: 1.4; }
+      .intro { padding: 16px; }
+      h1 { margin: 0 0 8px; font-size: 24px; }
+      p { margin: 0 0 12px; }
+      button { font-size: 17px; padding: 14px 18px; margin: 6px 0; width: 100%; }
 
-      /* Test 1: a plain fixed div, no dialog involved at all. */
-      .fixed-box {
-        position: fixed;
-        inset: 0;
-        background: crimson;
-        color: white;
+      /* Every test surface shares this: a marker hard against the top edge, a marker hard
+         against the bottom edge, and a numeric readout in the middle. If the surface is
+         rendering at its true size, all three are on screen. */
+      .surface {
         display: flex;
         flex-direction: column;
         justify-content: space-between;
         box-sizing: border-box;
-        padding: 16px;
-      }
-      .fixed-box p { margin: 0; font-size: 20px; font-weight: bold; }
-
-      /* Test 2: the same box, but inside a native <dialog> via showModal(). */
-      dialog.test-dialog {
-        position: fixed;
-        inset: 0;
-        width: 100%;
-        height: 100%;
-        max-width: none;
-        max-height: none;
-        margin: 0;
-        border: none;
-        padding: 0;
-        background: seagreen;
+        padding: 12px;
         color: white;
+        font-weight: bold;
       }
-      dialog.test-dialog[open] {
-        display: flex;
-        flex-direction: column;
-        justify-content: space-between;
-        box-sizing: border-box;
-        padding: 16px;
+      .surface .readout {
+        font-weight: normal;
+        font-size: 13px;
+        line-height: 1.35;
+        font-family: ui-monospace, Menlo, monospace;
+        background: rgb(0 0 0 / 35%);
+        padding: 8px;
+        border-radius: 6px;
+        white-space: pre;
+        overflow: auto;
       }
+      .surface button { background: white; color: black; border: none; border-radius: 6px; }
 
-      button { font-size: 18px; padding: 12px 20px; margin: 8px; }
+      /* Test 1 — a plain fixed div. No <dialog>, no top layer. */
+      #t1 { position: fixed; inset: 0; background: crimson; }
+
+      /* Test 2 — <dialog> sized by the UA's own modal rules, panel positioned ABSOLUTELY
+         inside it. This is what the app shipped before, and it makes the panel only as
+         correct as the dialog's own box. */
+      dialog.host {
+        position: fixed; inset: 0;
+        width: 100%; height: 100%;
+        max-width: none; max-height: none;
+        margin: 0; border: none; padding: 0;
+        background: transparent; overflow: hidden;
+      }
+      #t2 .panel { position: absolute; inset: 0; background: seagreen; }
+
+      /* Test 3 — same dialog, panel positioned FIXED against the viewport instead. This is
+         what the app ships now. */
+      #t3 .panel { position: fixed; inset: 0; background: rebeccapurple; }
     </style>
   </head>
   <body>
-    <div style="padding: 16px;">
+    <div class="intro">
       <h1>Diagnostic</h1>
-      <p>Two tests. For each, tell me: do you see BOTH "TOP" and "BOTTOM" text, or only one?</p>
-      <button id="show-fixed">Test 1: plain fixed div (no dialog)</button>
-      <br />
-      <button id="show-dialog">Test 2: native &lt;dialog&gt; showModal()</button>
+      <p>
+        Open each test and screenshot it. Each one should fill the whole screen and show
+        <b>TOP</b>, a block of numbers, and <b>BOTTOM</b>. Whichever test loses its TOP or
+        BOTTOM marker — or reports a height that is not the screen height — is the one that
+        is broken.
+      </p>
+      <button id="b1">Test 1 — plain position:fixed div</button>
+      <button id="b2">Test 2 — dialog + absolute panel (old)</button>
+      <button id="b3">Test 3 — dialog + fixed panel (shipping now)</button>
+      <button id="b4">Test 3 again, with the page scrolled down 600px</button>
+      <div style="height: 1500px"></div>
+      <p>(This filler exists so the page can actually be scrolled for test 4.)</p>
     </div>
 
-    <div class="fixed-box" id="fixed-box" style="display: none;">
-      <p>TOP — Test 1: plain position:fixed div</p>
-      <button onclick="document.getElementById('fixed-box').style.display='none'">Close (if you can reach it)</button>
-      <p>BOTTOM — if you can read this, the bottom rendered fine</p>
+    <div class="surface" id="t1" style="display: none">
+      <p>TOP — Test 1: plain fixed div</p>
+      <div class="readout"></div>
+      <button data-close="t1">Close</button>
+      <p>BOTTOM — Test 1</p>
     </div>
 
-    <dialog class="test-dialog" id="test-dialog">
-      <p>TOP — Test 2: &lt;dialog&gt; via showModal()</p>
-      <button id="close-dialog">Close (if you can reach it)</button>
-      <p>BOTTOM — if you can read this, the bottom rendered fine</p>
+    <dialog class="host" id="t2">
+      <div class="surface panel">
+        <p>TOP — Test 2: dialog + absolute panel</p>
+        <div class="readout"></div>
+        <button data-close="t2">Close</button>
+        <p>BOTTOM — Test 2</p>
+      </div>
+    </dialog>
+
+    <dialog class="host" id="t3">
+      <div class="surface panel">
+        <p>TOP — Test 3: dialog + fixed panel</p>
+        <div class="readout"></div>
+        <button data-close="t3">Close</button>
+        <p>BOTTOM — Test 3</p>
+      </div>
     </dialog>
 
     <script>
-      document.getElementById('show-fixed').onclick = () => {
-        document.getElementById('fixed-box').style.display = 'flex';
+      const px = (n) => (n === null || n === undefined ? '?' : Math.round(n));
+
+      /**
+       * The whole point of this page. A yes/no "did you see both markers" narrows things
+       * down; the actual boxes say which element is wrong and by how much, which is what
+       * an unreproducible layout bug on someone else's phone needs.
+       */
+      function report(surface, id) {
+        const readout = surface.querySelector('.readout');
+        const rect = surface.getBoundingClientRect();
+        const dialog = surface.closest('dialog');
+        const vv = window.visualViewport;
+
+        const lines = [
+          'test          ' + id,
+          'screen        ' + px(window.innerWidth) + ' x ' + px(window.innerHeight) + '  dpr ' + window.devicePixelRatio,
+          'visualVP      ' + (vv ? px(vv.width) + ' x ' + px(vv.height) + '  offsetTop ' + px(vv.offsetTop) + '  scale ' + vv.scale.toFixed(2) : 'n/a'),
+          'scrollY       ' + px(window.scrollY),
+        ];
+        if (dialog) {
+          const d = dialog.getBoundingClientRect();
+          lines.push('dialog box    top ' + px(d.top) + '  left ' + px(d.left) + '  ' + px(d.width) + ' x ' + px(d.height));
+        }
+        lines.push('surface box   top ' + px(rect.top) + '  left ' + px(rect.left) + '  ' + px(rect.width) + ' x ' + px(rect.height));
+
+        const fillsScreen =
+          Math.abs(rect.top) <= 1 &&
+          Math.abs(rect.left) <= 1 &&
+          Math.abs(rect.height - window.innerHeight) <= 1 &&
+          Math.abs(rect.width - window.innerWidth) <= 1;
+        lines.push('VERDICT       ' + (fillsScreen ? 'fills the screen — OK' : '*** WRONG — see numbers above ***'));
+
+        readout.textContent = lines.join('\n');
+      }
+
+      function openSurface(id) {
+        const el = document.getElementById(id);
+        if (el.tagName === 'DIALOG') {
+          el.showModal();
+          report(el.querySelector('.surface'), id);
+        } else {
+          el.style.display = 'flex';
+          report(el, id);
+        }
+      }
+
+      document.getElementById('b1').onclick = () => openSurface('t1');
+      document.getElementById('b2').onclick = () => openSurface('t2');
+      document.getElementById('b3').onclick = () => openSurface('t3');
+      document.getElementById('b4').onclick = () => {
+        // Scrolled first, because a panel displaced by roughly the scroll offset is the
+        // specific failure this page exists to catch.
+        window.scrollTo(0, 600);
+        setTimeout(() => openSurface('t3'), 150);
       };
-      document.getElementById('show-dialog').onclick = () => {
-        document.getElementById('test-dialog').showModal();
-      };
-      document.getElementById('close-dialog').onclick = () => {
-        document.getElementById('test-dialog').close();
-      };
+
+      for (const b of document.querySelectorAll('[data-close]')) {
+        b.onclick = () => {
+          const el = document.getElementById(b.dataset.close);
+          if (el.tagName === 'DIALOG') el.close();
+          else el.style.display = 'none';
+        };
+      }
+
+      // Numbers go stale when the iOS toolbars slide away, so keep them live.
+      for (const evt of ['resize', 'scroll', 'orientationchange']) {
+        window.addEventListener(evt, () => {
+          for (const id of ['t1', 't2', 't3']) {
+            const el = document.getElementById(id);
+            const visible = el.tagName === 'DIALOG' ? el.open : el.style.display === 'flex';
+            if (visible) report(el.tagName === 'DIALOG' ? el.querySelector('.surface') : el, id);
+          }
+        });
+      }
     </script>
   </body>
 </html>

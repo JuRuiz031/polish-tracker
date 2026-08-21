@@ -48,33 +48,49 @@ const mountedSheets = new Set<() => void>();
 /**
  * Locking background scroll while a sheet is open.
  *
- * `overflow: hidden` on `<body>` is the textbook approach and it is NOT enough on iOS
- * Safari — the page behind a modal keeps scrolling anyway, because iOS does not treat
- * `overflow: hidden` on `<body>` as a scroll boundary the way every other engine does.
- * The fix that iOS actually respects is pinning the body with `position: fixed`, which
- * is why this exists instead of the one-line version.
+ * This deliberately does NOT pin `<body>` with `position: fixed`, which is what it used
+ * to do and what most "iOS scroll lock" advice still recommends.
+ *
+ * That advice was written for a PARTIAL bottom sheet, where the page behind stays visible
+ * beside and above the panel and any background scrolling is therefore obvious. This
+ * sheet is a full-screen opaque take-over on a phone (see index.css), so there is nothing
+ * to see behind it and nothing for a stray scroll to give away. The cost stayed, though,
+ * and it is a bad one: pinning the body is the only code in this app that translates the
+ * whole document vertically, by `-scrollY`. A modal rendering as a strip of its own bottom
+ * edge at the top of the screen — the reported symptom on a real iPhone — is exactly what
+ * "the panel got displaced upward by roughly a scroll offset" looks like. Whether iOS is
+ * genuinely resolving the panel against the pinned body or not, keeping a document-moving
+ * hack around to solve a problem the full-screen redesign already solved is trading a
+ * confirmed layout risk for a benefit that no longer exists.
+ *
+ * `overflow: hidden` on both the element and the body, plus `overscroll-behavior: none`
+ * to stop scroll chaining and the rubber-band, holds the page still without moving it.
  *
  * Reference-counted rather than a plain set/clear, because `mountedSheets` allows two
  * sheets to briefly coexist during a handoff (detail closes, edit opens, same commit) —
  * without counting, the first sheet's cleanup would unlock scrolling out from under the
- * second, and `window.scrollY` reads 0 while the body is pinned, so a naive re-lock
- * would forget where the page actually was.
+ * second.
  */
 let scrollLockCount = 0;
 let savedScrollY = 0;
-let savedPaddingRight = '';
+let saved: { bodyOverflow: string; bodyPaddingRight: string; rootOverflow: string; rootOverscroll: string } | null =
+  null;
 
 function lockBodyScroll(): void {
   if (scrollLockCount === 0) {
+    const root = document.documentElement;
     savedScrollY = window.scrollY;
-    savedPaddingRight = document.body.style.paddingRight;
+    saved = {
+      bodyOverflow: document.body.style.overflow,
+      bodyPaddingRight: document.body.style.paddingRight,
+      rootOverflow: root.style.overflow,
+      rootOverscroll: root.style.overscrollBehavior,
+    };
     // Reserve the scrollbar's width so the page behind does not shift sideways when its
     // scrolling is disabled. Invisible with overlay scrollbars, obvious on Windows.
-    const gutter = window.innerWidth - document.documentElement.clientWidth;
-    document.body.style.position = 'fixed';
-    document.body.style.top = `-${savedScrollY}px`;
-    document.body.style.left = '0';
-    document.body.style.right = '0';
+    const gutter = window.innerWidth - root.clientWidth;
+    root.style.overflow = 'hidden';
+    root.style.overscrollBehavior = 'none';
     document.body.style.overflow = 'hidden';
     if (gutter > 0) document.body.style.paddingRight = `${gutter}px`;
   }
@@ -83,16 +99,30 @@ function lockBodyScroll(): void {
 
 function unlockBodyScroll(): void {
   scrollLockCount = Math.max(0, scrollLockCount - 1);
-  if (scrollLockCount > 0) return;
-  document.body.style.position = '';
-  document.body.style.top = '';
-  document.body.style.left = '';
-  document.body.style.right = '';
-  document.body.style.overflow = '';
-  document.body.style.paddingRight = savedPaddingRight;
-  // Restore exactly where she was — position: fixed disconnects the page from its own
-  // scroll position, so without this closing a sheet would silently drop her at the top.
-  window.scrollTo(0, savedScrollY);
+  if (scrollLockCount > 0 || !saved) return;
+  const root = document.documentElement;
+  root.style.overflow = saved.rootOverflow;
+  root.style.overscrollBehavior = saved.rootOverscroll;
+  document.body.style.overflow = saved.bodyOverflow;
+  document.body.style.paddingRight = saved.bodyPaddingRight;
+  saved = null;
+  restoreScroll();
+}
+
+/**
+ * Put the page back where the lock found it.
+ *
+ * Normally a no-op — nothing here translates the document any more. It exists because the
+ * browser can still scroll the page on its own while a sheet opens: `showModal()`
+ * auto-focuses the dialog's first focusable child, and focusing an element scrolls it into
+ * view. `overflow: hidden` does not prevent that (it stops *user* scroll input; a
+ * programmatic scroll still lands, which is also why this correction works at all).
+ *
+ * The old body-pinning lock got this for free, since a `position: fixed` body cannot be
+ * scrolled by anything. Locking without moving the document means it has to be explicit.
+ */
+function restoreScroll(): void {
+  if (window.scrollY !== savedScrollY) window.scrollTo(0, savedScrollY);
 }
 
 function prefersReducedMotion(): boolean {
@@ -207,17 +237,19 @@ export function Sheet({
 
     opener.current = document.activeElement;
 
-    // Locked BEFORE showModal(), not after: showModal() auto-focuses the first focusable
-    // child, and that focus can scroll the page to reveal it — so capturing the scroll
-    // position any later than this records wherever that auto-scroll already left it,
-    // not where she actually was.
+    // Locked BEFORE showModal(), so the scroll position it records is where she actually
+    // was rather than wherever the browser's auto-focus is about to leave her.
     lockBodyScroll();
     if (!dialog.open) dialog.showModal();
 
-    // showModal()'s auto-focus can also scroll a container to reveal it. Taking focus
-    // explicitly, without scrolling, keeps the browser from nudging anything further
-    // while the panel is still off-screen.
+    // showModal() auto-focuses the dialog's first focusable child, and focusing scrolls
+    // that child into view. Taking focus explicitly, without scrolling, stops the browser
+    // nudging anything further.
     panel.focus({ preventScroll: true });
+
+    // ...and undo the scroll showModal()'s own auto-focus may already have done before we
+    // got here. Inside a layout effect, so the correction lands before paint.
+    restoreScroll();
 
     // Slide in, from measured pixels. On a wide screen the panel is a centred dialog, so
     // it lifts and fades a little rather than travelling the height of the viewport.

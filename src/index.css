@@ -1549,11 +1549,23 @@ dialog.sheet {
    * `inset: 0` rather than a height in any unit — percentage, svh, dvh, all of them, in
    * turn, went wrong on a real device across earlier attempts at this file. Anchoring
    * all four edges directly is the one sizing approach here that involves no arithmetic
-   * for a browser to get wrong: the panel simply IS the dialog's box, which is itself
-   * `inset: 0` on the viewport. `travel()` in Sheet.tsx (offsetHeight) still works
+   * for a browser to get wrong. `travel()` in Sheet.tsx (offsetHeight) still works
    * unchanged — it measures whatever this resolves to, rather than assuming a number.
+   *
+   * `fixed`, NOT `absolute`, and that distinction is the point. An absolutely positioned
+   * panel resolves `inset: 0` against the <dialog>'s box, which makes the panel only as
+   * correct as that box is — and the dialog's box is the one thing here already known to
+   * go wrong on a real device: an earlier session watched it collapse to 0x0, which is
+   * what the explicit `width`/`height` on `dialog.sheet` above exists to paper over. A
+   * `fixed` panel resolves against the viewport instead, so the visible surface no longer
+   * inherits whatever the UA stylesheet and the top layer between them decide a
+   * `dialog:modal` box should be. One less link in the chain, and it is the link that has
+   * already been caught failing.
+   *
+   * The desktop rule below resets this to `position: relative; inset: auto` so flex can
+   * still centre it.
    */
-  position: absolute;
+  position: fixed;
   inset: 0;
   display: flex;
   flex-direction: column;
