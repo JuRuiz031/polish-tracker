@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { FINISHES, PRIORITIES, SALE_WINDOWS, SELECTABLE_STATUSES } from '../../domain/enums';
 import { wishlistInputSchema } from '../../domain/schema';
+import { findCollisions } from '../../domain/dedupe';
 import type { WishlistItem } from '../../domain/types';
 import { useStore } from '../../app/storeContext';
 import { Button, SelectField, TextAreaField, TextField } from '../../ui/primitives';
@@ -20,7 +21,7 @@ export function WishlistForm({
   onDone: () => void;
   onCancel: () => void;
 }) {
-  const { addWishlistItem, editWishlistItem, showToast } = useStore();
+  const { allPolishes, allWishlist, addWishlistItem, editWishlistItem, showToast } = useStore();
 
   const [brand, setBrand] = useState(existing?.brand ?? '');
   const [name, setName] = useState(existing?.name ?? '');
@@ -39,6 +40,30 @@ export function WishlistForm({
   const [link, setLink] = useState(existing?.link ?? '');
   const [notes, setNotes] = useState(existing?.notes ?? '');
   const { errors, saving, submit } = useSchemaForm(wishlistInputSchema);
+
+  /**
+   * Live duplicate detection, in the two flavours the wishlist has to tell apart — the
+   * same split `flagWishlist` makes for the list view, moved to entry time so she hears
+   * about it before saving rather than after.
+   *
+   * Neither blocks submission. "Already owned" is not even a mistake: she may want a
+   * backup of a favourite, exactly as the collection form allows. "Already listed" is
+   * closer to a slip, but it is still her call — the app says so and gets out of the way.
+   *
+   * Checked against the `all*` lists because `isCountable` does the filtering itself, and
+   * it excludes more than deleted rows: an archived bottle she used up should not suppress
+   * a wishlist entry to replace it, and a Bought wishlist row is history rather than an
+   * intention.
+   */
+  const owned = useMemo(() => {
+    if (brand.trim() === '' || name.trim() === '') return [];
+    return findCollisions(allPolishes, brand, name);
+  }, [allPolishes, brand, name]);
+
+  const alreadyListed = useMemo(() => {
+    if (brand.trim() === '' || name.trim() === '') return [];
+    return findCollisions(allWishlist, brand, name, existing?.id);
+  }, [allWishlist, brand, name, existing?.id]);
 
   async function save() {
     await submit(
@@ -92,6 +117,30 @@ export function WishlistForm({
         onChange={(value) => setName(value)}
         autoComplete="off"
       />
+
+      {/* Both advisory, and deliberately worded differently — see the memos above. */}
+      {owned.length > 0 && (
+        <div className="notice notice--owned" role="status">
+          <p>
+            You already have{' '}
+            <strong>
+              {owned[0].brand} {owned[0].name}
+            </strong>{' '}
+            in the collection.
+          </p>
+          <p className="notice__aside">
+            Still fine to want a backup — saving will keep both.
+          </p>
+        </div>
+      )}
+      {alreadyListed.length > 0 && (
+        <div className="notice notice--duplicate" role="status">
+          <p>This is already on the wishlist.</p>
+          <p className="notice__aside">
+            Saving will list it twice, which is usually a slip rather than intentional.
+          </p>
+        </div>
+      )}
 
       <div className="form__row">
         <SelectField

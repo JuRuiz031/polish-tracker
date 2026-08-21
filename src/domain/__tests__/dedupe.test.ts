@@ -107,6 +107,35 @@ describe('findCollisions', () => {
     const collisions = findCollisions(collection, 'OPI', 'Big Apple Red');
     expect(collisions).toHaveLength(1);
   });
+
+  it('ignores an archived bottle, so replacing a used-up polish is not flagged', () => {
+    const withArchived = [makePolish({ id: 'a', brand: 'OPI', name: 'Red', archived: true })];
+    expect(findCollisions(withArchived, 'OPI', 'Red')).toEqual([]);
+  });
+
+  // The wishlist form checks a new row against BOTH lists, so this has to work over
+  // wishlist rows and not only over polishes.
+  describe('over wishlist rows', () => {
+    const wishlist = [
+      makeWishlistItem({ id: 'w1', brand: 'ILNP', name: 'Mercury Rising' }),
+      makeWishlistItem({ id: 'w2', brand: 'Zoya', name: 'Payton' }),
+    ];
+
+    it('finds an item already listed, by normalised key', () => {
+      expect(findCollisions(wishlist, 'ilnp ', 'MERCURY RISING').map((i) => i.id)).toEqual(['w1']);
+    });
+
+    it('does not flag a row against itself when editing', () => {
+      expect(findCollisions(wishlist, 'ILNP', 'Mercury Rising', 'w1')).toEqual([]);
+    });
+
+    it('ignores a Bought row, which is history rather than an intention', () => {
+      // Mirrors isCountable's status filter: once bought, the row points at the bottle
+      // it became, so re-wanting the shade is not "already on the wishlist".
+      const bought = [makeWishlistItem({ id: 'w3', brand: 'OPI', name: 'Red', status: 'Bought' })];
+      expect(findCollisions(bought, 'OPI', 'Red')).toEqual([]);
+    });
+  });
 });
 
 describe('flagWishlist', () => {

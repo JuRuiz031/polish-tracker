@@ -81,22 +81,41 @@ export function countDuplicateGroups(polishes: readonly Polish[]): number {
 }
 
 /**
- * Would adding this brand/name collide with something she already owns?
- * Used at entry time to render the inline "Add anyway / Edit" warning.
- * `excludeId` lets an edit of an existing row ignore itself.
+ * The minimum a row needs for duplicate detection. Both `Polish` and `WishlistItem`
+ * satisfy it structurally — mirroring `isCountable` above, which was already written
+ * against a shape rather than a concrete type.
  */
-export function findCollisions(
-  polishes: readonly Polish[],
+interface DedupeRow {
+  id: string;
+  brand: string;
+  name: string;
+  deleted_at: string | null;
+  archived?: boolean;
+  status?: string;
+}
+
+/**
+ * Would adding this brand/name collide with something already recorded?
+ *
+ * Used at entry time to render an inline warning while she types, in both forms and
+ * against both lists — a new wishlist row is checked against the collection ("you
+ * already own this") *and* against the wishlist itself ("this is already listed"), which
+ * are the same two states `flagWishlist` distinguishes after the fact.
+ *
+ * `excludeId` lets an edit of an existing row ignore itself.
+ *
+ * Generic over the row type so the caller gets its own type back, rather than every
+ * caller having to widen to a common interface and cast at the use site.
+ */
+export function findCollisions<T extends DedupeRow>(
+  rows: readonly T[],
   brand: string,
   name: string,
   excludeId?: string,
-): Polish[] {
+): T[] {
   const key = dedupeKey(brand, name);
-  return polishes.filter(
-    (polish) =>
-      isCountable(polish) &&
-      polish.id !== excludeId &&
-      dedupeKey(polish.brand, polish.name) === key,
+  return rows.filter(
+    (row) => isCountable(row) && row.id !== excludeId && dedupeKey(row.brand, row.name) === key,
   );
 }
 
