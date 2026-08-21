@@ -217,16 +217,31 @@ describe('reconciling with the other device', () => {
   });
 
   it('a delete made offline is not resurrected by the sync', async () => {
+    // `sync()` awaited directly rather than `settle()`'s fixed setTimeout(0): write()'s
+    // own background sync is fire-and-forget, and `sync()` chains onto that same queue,
+    // so awaiting it is what actually guarantees it has run, rather than guessing at how
+    // long that takes.
+    //
+    // The 2ms pause before deleting is not padding — it is load-bearing. `mergeRows`
+    // breaks a tie on `updated_at` in favour of `remote` (domain/merge.ts), and
+    // `InMemoryRepository` stamps `updated_at` with millisecond resolution. Add-then-
+    // delete with no real time between them can land in the same millisecond, in which
+    // case the merge sees a tie and keeps remote's older, non-deleted row — silently
+    // undoing the delete. That is a real edge case this test exists to catch, not one to
+    // paper over: without the pause, this test itself intermittently proved the opposite
+    // of what its name says.
     const remote = new FakeRemote();
     const repo = new OfflineRepository(remote, empty());
     await repo.load();
     const row = await repo.addPolish({ ...POLISH });
-    await settle();
+    await repo.sync();
     expect(remote.snapshot.polish).toHaveLength(1);
+
+    await new Promise((resolve) => setTimeout(resolve, 2));
 
     remote.reachable = false;
     await repo.deletePolish(row.id);
-    await settle();
+    await repo.sync();
 
     remote.reachable = true;
     await repo.sync();
