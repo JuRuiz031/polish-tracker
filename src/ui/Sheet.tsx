@@ -144,6 +144,31 @@ export function Sheet({
     return window.matchMedia('(max-width: 59.99rem)').matches;
   }
 
+  /**
+   * The panel's height on a phone, measured rather than left to CSS.
+   *
+   * `88svh` in the stylesheet is correct by the spec and still there as a fallback, but
+   * it lives inside a `<dialog>` shown via `showModal()`, and on a real device that has
+   * been observed to size wrong — not a simulated small window, an actual iPhone in
+   * Safari, reported twice, on two different sheets. `visualViewport` is the API iOS
+   * Safari itself provides specifically for "what height is actually visible right now",
+   * built for exactly this class of problem (the address bar, the keyboard, all of it).
+   * Reading it directly and setting the height as an inline style bypasses whatever went
+   * wrong in the CSS cascade entirely, because an inline style wins regardless of cause.
+   */
+  function panelHeightPx(): number {
+    const viewport = window.visualViewport?.height ?? window.innerHeight;
+    return Math.round(viewport * 0.88);
+  }
+
+  /** Applies the measured height, and keeps it current — the keyboard opening or the
+   * device rotating both change what "the viewport" means mid-session. */
+  function syncPanelHeight() {
+    const panel = panelRef.current;
+    if (!panel || !isBottomSheet()) return;
+    panel.style.height = `${panelHeightPx()}px`;
+  }
+
   /** Mount, show, lock the page — and undo all of it on the way out. */
   useLayoutEffect(() => {
     if (!mounted) return;
@@ -169,6 +194,12 @@ export function Sheet({
     // while the panel is still off-screen.
     panel.focus({ preventScroll: true });
 
+    // Set BEFORE travel() reads offsetHeight below, so the slide distance matches the
+    // height actually in effect rather than whatever the stylesheet alone would produce.
+    syncPanelHeight();
+    window.visualViewport?.addEventListener('resize', syncPanelHeight);
+    window.addEventListener('resize', syncPanelHeight);
+
     // Slide in, from measured pixels. On a wide screen the panel is a centred dialog, so
     // it lifts and fades a little rather than travelling the height of the viewport.
     const distance = isBottomSheet() ? travel(panel) : 12;
@@ -190,6 +221,8 @@ export function Sheet({
 
     return () => {
       mountedSheets.delete(evict);
+      window.visualViewport?.removeEventListener('resize', syncPanelHeight);
+      window.removeEventListener('resize', syncPanelHeight);
       animation.current?.cancel();
       animation.current = null;
       unlockBodyScroll();
