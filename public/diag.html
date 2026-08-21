@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>Diagnostic</title>
+    <style>
+      html, body { margin: 0; padding: 0; }
+      body { font-family: -apple-system, sans-serif; }
+
+      /* Test 1: a plain fixed div, no dialog involved at all. */
+      .fixed-box {
+        position: fixed;
+        inset: 0;
+        background: crimson;
+        color: white;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        box-sizing: border-box;
+        padding: 16px;
+      }
+      .fixed-box p { margin: 0; font-size: 20px; font-weight: bold; }
+
+      /* Test 2: the same box, but inside a native <dialog> via showModal(). */
+      dialog.test-dialog {
+        position: fixed;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        max-width: none;
+        max-height: none;
+        margin: 0;
+        border: none;
+        padding: 0;
+        background: seagreen;
+        color: white;
+      }
+      dialog.test-dialog[open] {
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        box-sizing: border-box;
+        padding: 16px;
+      }
+
+      button { font-size: 18px; padding: 12px 20px; margin: 8px; }
+    </style>
+  </head>
+  <body>
+    <div style="padding: 16px;">
+      <h1>Diagnostic</h1>
+      <p>Two tests. For each, tell me: do you see BOTH "TOP" and "BOTTOM" text, or only one?</p>
+      <button id="show-fixed">Test 1: plain fixed div (no dialog)</button>
+      <br />
+      <button id="show-dialog">Test 2: native &lt;dialog&gt; showModal()</button>
+    </div>
+
+    <div class="fixed-box" id="fixed-box" style="display: none;">
+      <p>TOP — Test 1: plain position:fixed div</p>
+      <button onclick="document.getElementById('fixed-box').style.display='none'">Close (if you can reach it)</button>
+      <p>BOTTOM — if you can read this, the bottom rendered fine</p>
+    </div>
+
+    <dialog class="test-dialog" id="test-dialog">
+      <p>TOP — Test 2: &lt;dialog&gt; via showModal()</p>
+      <button id="close-dialog">Close (if you can reach it)</button>
+      <p>BOTTOM — if you can read this, the bottom rendered fine</p>
+    </dialog>
+
+    <script>
+      document.getElementById('show-fixed').onclick = () => {
+        document.getElementById('fixed-box').style.display = 'flex';
+      };
+      document.getElementById('show-dialog').onclick = () => {
+        document.getElementById('test-dialog').showModal();
+      };
+      document.getElementById('close-dialog').onclick = () => {
+        document.getElementById('test-dialog').close();
+      };
+    </script>
+  </body>
+</html>
