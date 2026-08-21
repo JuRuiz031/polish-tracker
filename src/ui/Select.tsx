@@ -256,13 +256,17 @@ export function Select({
                   className={`select__option ${index === activeIndex ? 'is-active' : ''} ${
                     isSelected ? 'is-selected' : ''
                   }`}
-                  /* pointerdown rather than click: the outside-click listener also runs
-                     on pointerdown, and a click handler would fire after the list had
-                     already been torn down. */
-                  onPointerDown={(event) => {
-                    event.preventDefault();
-                    choose(index);
-                  }}
+                  /* onClick, not onPointerDown: pointerdown fires the instant a finger
+                     touches the screen, before the browser has any chance to decide
+                     whether the gesture is a tap or the start of a scroll. Selecting on
+                     it — confirmed directly, on a real device — makes every touch an
+                     immediate selection and a scroll through the list impossible. click
+                     only fires once a pointerup lands without meaningful movement, which
+                     is exactly "tap selects, drag scrolls". The outside-click listener
+                     the old comment worried about listens on pointerdown too, but checks
+                     rootRef.contains(target) — since every option lives inside rootRef,
+                     it correctly leaves the list open for a pointerdown that lands here. */
+                  onClick={() => choose(index)}
                   onPointerEnter={() => setActiveIndex(index)}
                 >
                   {option.swatch !== undefined && (
