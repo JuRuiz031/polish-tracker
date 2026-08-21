@@ -1499,7 +1499,11 @@ dialog.sheet {
   position: fixed;
   inset: 0;
   width: 100%;
-  height: 100%;
+  /* svh, not %, for the same reason .sheet__panel's max-height is svh below — a
+     percentage here would be the dialog measuring itself, and that self-referential
+     sizing is exactly what went wrong on a real device. `inset: 0` already pins every
+     edge to the viewport; this is belt-and-braces for anything that reads the height. */
+  height: 100svh;
   max-width: none;
   max-height: none;
   margin: 0;
@@ -1548,8 +1552,16 @@ dialog.sheet {
      settling), the transform's meaning changed mid-transition and the panel visibly
      jumped. */
   height: 88svh;
-  /* Never taller than the layer holding it, whatever the browser thinks that is. */
-  max-height: 100%;
+  /* A viewport unit, not a percentage — `max-height: 100%` resolves against the <dialog>
+     element's OWN computed height, and on real iOS Safari that has been observed to
+     resolve to a small, wrong value for a <dialog> shown via showModal(). When that
+     happens `max-height` wins over the explicit `height: 88svh` above it (browsers clamp
+     to the smaller of the two), and the panel renders as a sliver instead of a sheet —
+     this is not hypothetical, it reproduced on a real device. `100svh` sidesteps the
+     dialog's own sizing entirely by measuring the viewport directly, the same fix the
+     desktop breakpoint below already uses (`max-height: 90svh`) — this rule just never
+     matched it. */
+  max-height: 100svh;
   display: flex;
   flex-direction: column;
   background: var(--surface-page);
