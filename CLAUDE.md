@@ -13,37 +13,41 @@ todo app would justify.
 
 ## Where we left off (last session)
 
-Persistence, the export/restore round trip, and PWA install are all built and verified
-end to end. `main` has:
+Everything through deployment was already built and verified when this session started:
+the wheel animation fix, the Postgres schema audit (now **shelved**), GitHub-repo
+storage, the setup screen and four connection states, write-side validation,
+offline-first writes with row-level reconciliation, the backup screen, PWA install, both
+open design decisions settled, and GitHub Pages deployment at
+`https://juruiz031.github.io/polish-tracker/` — served from a **subpath**, so read
+"GitHub Pages subpath" below before touching `vite.config.ts`, `index.html`, or
+`App.tsx`'s router.
 
-1. The wheel animation fix
-2. Postgres schema audit + fixes + validation (now **shelved** — see below)
-3. Storage moved to a private GitHub repo
-4. First-run setup screen and the four connection states
-5. Write-side validation
-6. Offline-first writes with row-level reconciliation
-7. **Backup screen** — download and restore, wired to the existing `data/transfer/` layer
-8. **PWA install** — manifest, icons, service worker; offline reload now works
-9. **Both open design decisions settled** and the storage/growth question the owner
-   raised is answered with real numbers — see `docs/pre-persistence-audit.md`'s
-   "Resolved" section, not "Known gaps" below (moved there once this actually happened)
-10. **Deployed to GitHub Pages** — live at `https://juruiz031.github.io/polish-tracker/`,
-    auto-deploys on every push to `main` via `.github/workflows/deploy-pages.yml`. Served
-    from a **subpath**, not the domain root — see "GitHub Pages subpath" below before
-    touching `vite.config.ts`, `index.html`, or `App.tsx`'s router.
+**The beta test has now actually started, and it immediately found what a year of
+simulation did not.** On a real iPhone every modal was unusable: the panel opened, flew
+upward and came to rest above the viewport, leaving only its bottom edge — a strip of
+Save/Cancel/Delete — visible at the top of the screen with the backdrop greyed behind it.
+Six earlier commits had attacked this as "renders as a sliver at the top" and failed,
+because that description was wrong. It is fixed now (commit `ec44a13`); the reasoning is
+under "The iOS sheet bug" below, and it is worth reading before touching `ui/Sheet.tsx`
+or the `.sheet__*` rules.
 
-**Next up, in order:**
+Two follow-up layout faults from the same beta session are also fixed (`67d0c66`): a stat
+tile that wrapped mid-parenthetical, and an `input[type="date"]` whose WebKit intrinsic
+width made the whole form horizontally scrollable.
+
+**She is testing in demo mode.** The screenshots so far show seeded data — "OPI Bubble
+Bath", 26 polishes, 22 manicures, 4.2★ — which is exactly what `npm run dev` and "Look
+around first" produce. No token has been issued and `polish-data` is still empty, so
+nothing observed so far has touched real data, and no real data exists to lose yet.
+
+**Next up:**
 
 | | What | Why |
 |---|---|---|
-| 1 | **Batched bulk import** of her original spreadsheet | Explicitly deprioritised (below), but if it ever happens it needs one commit, not one per row — the batch path (`Repository.replaceAll`) already exists and JSON restore already uses it; a CSV importer would just need to build a merged `Snapshot` the same way `store.tsx`'s `importBackup` does. |
-| 2 | Beta test with the actual owner (Anabel), a few hours, on real device(s) | Everything below this line is written/simulated; nothing has been driven by the person it's for yet. |
+| 1 | **Bulk add / import** — reopened, being designed | The owner asked for this directly. See "Bulk import" below; it is no longer deprioritised. |
+| 2 | Continue the beta on a real device | The sheet bug proves this is where the real bugs are. Still untested: home-screen install, and anything touching a real token. |
 
 **Explicitly deprioritised:**
-- Importing her original spreadsheet. `importCollectionCsv` exists but its column
-  aliases are guesses, and she only has ~50 polishes — entering them by hand once was
-  judged easier and safer than debugging a fragile mapping. Do not spend time here
-  unless asked.
 - **Photos — cut, not just deferred.** `photo_path` still exists on the row type (it is
   free — nothing is being un-done), but no upload path will be built while storage is a
   git repository. Binary blobs committed on every edit is a bad fit for a backend chosen
@@ -59,9 +63,15 @@ end to end. `main` has:
 - **Reloading the app while offline now works** — verified with Playwright: install the
   service worker, reload once so the page is controlled, go offline, reload again, the
   shell still renders. This was the strongest argument for doing the PWA phase, and it is
-  done. What is *not* tested is a real iOS home-screen install — only the mechanism
+  done. What is *still* not tested is a real iOS home-screen install — only the mechanism
   (`vite-plugin-pwa`, workbox precache, manifest, apple-touch-icon) is verified in
-  Chromium. Confirm on her actual phone during the beta.
+  Chromium. The beta so far has been in an ordinary Safari tab opened from a Discord
+  link, which is the one context where the 7-day storage cap applies, so this remains
+  unconfirmed and matters: see "Why PWA install matters more than it looks" in the README.
+- **A service worker precaches the shell, so a deployed fix may not be what she is
+  looking at.** When asking her to re-test, say explicitly how to bypass it — close the
+  tab and reopen, or fully quit the app from the switcher if it is home-screen installed.
+  A "your fix didn't work" report from a stale cache costs a whole round trip.
 - **`Repository.replaceAll` exists now** — added this session, so bulk writes (JSON
   restore, and the offline layer's own reconciliation push) go through one commit
   instead of one per row. If a future bulk feature (CSV import, say) calls `addPolish`
@@ -93,6 +103,89 @@ end to end. `main` has:
   in `docs/pre-persistence-audit.md`. A rolling 12-month log window was considered and
   correctly shelved as solving a problem that does not exist yet — do not build it
   pre-emptively; revisit only if a real file approaches 1MB.
+
+---
+
+## The iOS sheet bug — seven commits, and what actually ended it
+
+Worth reading in full before changing `ui/Sheet.tsx` or the `.sheet__*` rules, because
+six of those seven commits were confident, well-argued, and wrong.
+
+**The symptom was misread from the start.** Every earlier attempt described it as "the
+modal renders as a sliver at the top of the screen" and reached for height and viewport
+units — `svh`, `dvh`, percentages, JS measurement, and eventually a full-screen redesign.
+None worked. What the strip at the top of the screen actually contained was
+`.form__actions` — the **last** element inside the scrolling `.sheet__body`. (`Sheet` has
+a `footer` prop, but no screen passes it; every form's buttons are the tail of the form
+itself.) So the visible strip was the panel's **bottom edge**, with the grip, the header
+and every field pushed off-screen above it.
+
+That is a **vertical displacement, not a collapsed height** — a different bug from the one
+being fixed, which is why six height fixes in a row did nothing. The owner's own
+description clinched it: the panel "flies to the top and then disappears above the
+screen" is the entry animation running *correctly* from below up to `translateY(0)`, when
+`translateY(0)` is itself off-screen. The animation was never at fault. The resting
+position was.
+
+Two things could displace it, and both were removed:
+
+1. **The scroll lock was translating the whole document.** `lockBodyScroll` pinned
+   `<body>` with `position: fixed; top: -scrollY` — the standard iOS recipe, and the only
+   code in the app that moves the document vertically, by exactly a scroll offset. It was
+   safe to drop because that trick exists to hide background scrolling behind a *partial*
+   bottom sheet, and the phone sheet had already become a full-screen opaque take-over —
+   the benefit was gone, the risk was not. It is now `overflow: hidden` plus
+   `overscroll-behavior: none`, which holds the page still **without moving it**.
+2. **The panel's box was defined by the `<dialog>`.** `.sheet__panel` was
+   `position: absolute; inset: 0`, so it was only ever as correct as the dialog's box —
+   and the dialog is the one element here already caught misbehaving on a real device
+   (an earlier session watched it collapse to 0x0, which is why `dialog.sheet` carries an
+   explicit `width`/`height` papering over it). It is now `position: fixed`, resolving
+   against the viewport directly and cutting the dialog out of the layout chain. The
+   dialog still supplies the focus trap, the inert background and Escape-to-close.
+
+**Both shipped together and the bug is gone, so which one fixed it is unknown.** The
+scroll lock is the better bet — the displacement matches its mechanism exactly — but do
+not "clean up" either change on the assumption that the other was the real fix.
+
+A knock-on the next person will otherwise rediscover: removing the body pinning exposed a
+scroll jump it had been hiding. `showModal()` auto-focuses the dialog's first focusable
+child, and focusing scrolls it into view; with the panel fixed at the top of the viewport
+that means scrolling the document to 0. A pinned body could not be scrolled by anything,
+so the old code got this for free. `restoreScroll()` now does it explicitly.
+
+**Two process lessons, which are the transferable part:**
+
+- **Read the symptom off the DOM before theorising.** The single most useful minute in
+  seven commits was checking which element those three buttons belonged to. Everything
+  before that was fixing a bug that was not happening.
+- **WebKit cannot be run on this machine.** Playwright's WebKit is downloaded and cached,
+  but will not launch — it needs ~35 system libraries and `npx playwright install-deps
+  webkit` needs root, which this environment does not have. Chromium at iPhone viewport
+  renders the sheet perfectly *both before and after* the fix, so it cannot reproduce any
+  of this. Do not mistake a green Chromium run for a verified iOS fix, and say so plainly
+  when reporting. `public/diag.html` exists for this: it is a standalone page that
+  **reports measured numbers** (viewport, visualViewport, scrollY, dialog and panel boxes,
+  plus a verdict line) and pits a plain fixed div against both the old absolute-panel and
+  new fixed-panel structures, so one screenshot from her phone can settle a layout
+  question that is otherwise pure speculation.
+
+---
+
+## Bulk import — reopened
+
+Previously deprioritised on the reasoning that ~50 polishes entered by hand once was
+safer than debugging a fragile CSV mapping. **The owner has since asked for it directly,
+so it is live work again.** Two things from the old note still hold and should shape
+whatever gets built:
+
+- **`importCollectionCsv` exists but its column aliases are guesses.** Nobody has seen her
+  actual spreadsheet. Do not treat that mapping as a foundation without checking it
+  against the real file.
+- **It must be one commit, not one per row.** `Repository.replaceAll` is the batch path
+  and JSON restore already uses it; build a merged `Snapshot` and call `replaceAll` once,
+  the same way `store.tsx`'s `importBackup` does. Calling `addPolish` in a loop regresses
+  into the write-amplification problem the batch path was built to avoid.
 
 ---
 
@@ -196,10 +289,27 @@ Every one of these was a real bug caught by testing, not by reading:
   ready before the store mounts, not arranged in a parent effect.
 - **Swallowing errors in a promise chain hides them from `await`ers too.** Keep the
   chain-continuation promise and the returned promise separate.
+- **`input[type="date"]` has an intrinsic width in WebKit** derived from the locale's
+  date format, and treats it as a floor — `width: 100%` will not shrink it. On a phone it
+  overflowed the sheet, and because `.sheet__body` scrolls (an `overflow-y: auto` box
+  computes `overflow-x` to `auto` too) that one field made the **whole form horizontally
+  scrollable**, which made every *other* field look misaligned. One overflowing child can
+  present as "the whole screen is subtly janky"; check `scrollWidth > clientWidth` on the
+  container before believing a report about alignment. Fixed with `appearance: none`,
+  `min-width: 0`, and a `::-webkit-date-and-time-value` reset for WebKit's centred value.
+- **Playwright's `.click()` scrolls the target into view first.** A test that scrolls the
+  page, then clicks a button near the top, has silently undone its own scroll before the
+  assertion runs. This cost a real detour chasing a scroll-restoration "regression" that
+  did not exist. Click something already inside the viewport when scroll position is part
+  of what is under test.
 
-**Test in a browser, not just in vitest.** The last three bugs above were invisible to
-unit tests and obvious within seconds of driving the real app. Playwright is not a
-dependency — install it temporarily, then remove it and restore `package-lock.json`.
+**Test in a browser, not just in vitest.** Most of the bugs above were invisible to unit
+tests and obvious within seconds of driving the real app. Playwright is not a dependency —
+install it temporarily, then remove it and restore `package-lock.json`.
+
+**And test on the real device where the real device is the subject.** The iOS sheet bug
+survived six fixes and a full redesign precisely because everything above was green the
+whole time. Chromium's iPhone emulation is a layout check, not a browser-engine check.
 
 ---
 
@@ -207,7 +317,7 @@ dependency — install it temporarily, then remove it and restore `package-lock.
 
 ```bash
 npm run dev          # seeded in-memory data, no backend needed
-npm test             # 295 tests
+npm test             # 296 tests
 npm run lint         # oxlint
 npx tsc -b           # typecheck
 npm run build        # also verifies the PWA plugin still emits sw.js + manifest.webmanifest

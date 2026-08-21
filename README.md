@@ -13,8 +13,20 @@ nothing that expires.
 are all in and verified.** "Look around first" on the setup screen still opens an
 in-memory demo — useful for trying the app with no key — and an unmissable banner marks
 it as sample data that resets on reload. A real key connects to her actual collection,
-stored durably in a private GitHub repository. What has not happened yet is a beta test
-by the person the app is actually for.
+stored durably in a private GitHub repository.
+
+**The beta test has started, and it earned its keep immediately.** On a real iPhone every
+modal was unusable — the panel came to rest above the viewport, leaving only its bottom
+edge on screen. It had survived six previous fixes because the symptom had been described
+wrongly from the beginning (as a collapsed height rather than a displacement); the
+write-up is in CLAUDE.md under "The iOS sheet bug". That, plus two smaller layout faults
+found in the same session, are fixed. Nothing had been driven by the person it is for
+until then, and the first hour of it found what a year of simulation had not.
+
+Still ahead: bulk import, so ~50 polishes do not have to be typed in one at a time, and
+the rest of the beta — including a real home-screen install and the first connection to
+a real token. The beta so far has run entirely on demo data, so no real collection exists
+yet.
 
 **Live:** https://juruiz031.github.io/polish-tracker/ — deploys automatically on every
 push to `main` via `.github/workflows/deploy-pages.yml`. Served from a subpath; see
@@ -51,20 +63,23 @@ ceiling. Going multi-user later means a real backend and a migration.
 | 1 | Domain logic | Picker, derived stats, duplicate detection, filters — pure functions, no React, no I/O |
 | 2 | Design system | Tokens, primitives, and a contrast audit that fails the build on a regression |
 | 3 | Every screen | Collection, wear log, wishlist, picker, stats — all driveable on the in-memory repo |
-| 4 | Import / export layer | JSON + CSV both directions, with round-trip tests. Code complete, not yet wired to a screen |
+| 4 | Import / export layer | JSON + CSV both directions, with round-trip tests. JSON is wired to the backup screen (phase 9); the CSV path is still code-only, and is the groundwork phase 14 will build on |
 | 5 | Postgres schema | Written, audited, fixed, and validated against real PG17 — now **shelved**, see below |
 | 6 | GitHub storage layer | `GitHubRepository` + Contents API client, behind the existing interface. Tested against a mocked API |
 | 7 | Setup screen + wiring | Paste a token, verify write access, store it, swap the repository in `app/store.tsx` |
 | 8 | Offline cache | A full local copy so the app works with no signal, and a failed write is queued rather than lost |
 | 9 | Backup screen | Download and restore, wired to the phase-4 layer. Restore merges rather than replaces, through the same row-level rule the offline layer uses to reconcile two devices |
 | 10 | PWA install | Manifest + service worker + icons. Verified with Playwright: install, go offline, reload — the app shell still loads |
+| 11 | Deployment | GitHub Pages, auto-deploying on every push to `main`, served from a subpath |
+| 12 | Open design decisions | Both settled, and the storage-growth question answered with measured numbers rather than estimates — see the "Resolved" section of [`docs/pre-persistence-audit.md`](docs/pre-persistence-audit.md) |
+| 13 | Real-device beta, first pass | The iOS modal bug found and fixed, plus a wrapped stat tile and a date field whose intrinsic width made the whole form scroll sideways |
 
 ### Next
 
 | # | Phase | Detail |
 |---|---|---|
-| 11 | Two open design decisions | Written up in [`docs/pre-persistence-audit.md`](docs/pre-persistence-audit.md) — waiting on the owner, not on engineering |
-| 12 | Beta test | Everything above is built and simulated; nothing has been driven by the person it's for yet |
+| 14 | Bulk add / import | So her existing collection does not have to be typed in one polish at a time. Whatever shape it takes must build one `Snapshot` and call `replaceAll` once — one commit, not one per row |
+| 15 | Rest of the beta | Home-screen install, the first real token, and everyday use on her own data |
 
 **Cut, not deferred: photos.** `photo_path` still exists on the row type, but no upload
 path will be built while storage is a git repository — binary blobs committed on every
@@ -131,11 +146,18 @@ npm run dev          # opens on the seeded in-memory data
 ```
 
 ```bash
-npm test            # 295 tests: domain logic, storage layer, contrast audit, round trip
+npm test            # 296 tests: domain logic, storage layer, contrast audit, round trip
 npm run coverage    # domain/ is held to 90% statements
 npm run lint        # oxlint
 npx tsc -b          # typecheck
 ```
+
+None of that catches a browser-engine bug. The iOS modal fault survived six fixes with
+every one of these green the whole time, because Chromium — including its iPhone
+emulation — renders the sheet correctly both before and after. Layout on a phone is
+verified on a phone; [`public/diag.html`](public/diag.html) exists to make that cheap,
+reporting measured viewport and element boxes so one screenshot can settle a question
+that is otherwise guesswork.
 
 ## Setting up storage
 
