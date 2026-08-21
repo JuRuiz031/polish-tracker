@@ -169,6 +169,27 @@ export function Sheet({
     panel.style.height = `${panelHeightPx()}px`;
   }
 
+  /**
+   * Keep correcting the height for a moment after open, instead of trusting the first
+   * reading.
+   *
+   * On a real device, `visualViewport.height` read at the exact instant the dialog opens
+   * can catch Safari's chrome mid-transition and report a value that settles moments
+   * later — confirmed because tapping the undersized panel was enough to fix it, and the
+   * only thing in this file that reacts to anything after open is the resize listener
+   * above. A tap is not a reliable way to trigger that correction, so this does the same
+   * thing on a schedule instead: next frame, and again after the animation would have
+   * finished, in case the settle takes longer than one frame.
+   */
+  function scheduleHeightRechecks(): () => void {
+    const frame = requestAnimationFrame(syncPanelHeight);
+    const timers = [100, 400].map((ms) => window.setTimeout(syncPanelHeight, ms));
+    return () => {
+      cancelAnimationFrame(frame);
+      for (const timer of timers) window.clearTimeout(timer);
+    };
+  }
+
   /** Mount, show, lock the page — and undo all of it on the way out. */
   useLayoutEffect(() => {
     if (!mounted) return;
@@ -199,6 +220,11 @@ export function Sheet({
     syncPanelHeight();
     window.visualViewport?.addEventListener('resize', syncPanelHeight);
     window.addEventListener('resize', syncPanelHeight);
+    const cancelRechecks = scheduleHeightRechecks();
+    // Belt and braces: a tap anywhere on the dialog is exactly what was observed to fix
+    // an undersized panel on a real device, whatever the browser was doing internally to
+    // make that true. Reacting to it directly does not depend on guessing why.
+    dialog.addEventListener('pointerdown', syncPanelHeight);
 
     // Slide in, from measured pixels. On a wide screen the panel is a centred dialog, so
     // it lifts and fades a little rather than travelling the height of the viewport.
@@ -223,6 +249,8 @@ export function Sheet({
       mountedSheets.delete(evict);
       window.visualViewport?.removeEventListener('resize', syncPanelHeight);
       window.removeEventListener('resize', syncPanelHeight);
+      cancelRechecks();
+      dialog.removeEventListener('pointerdown', syncPanelHeight);
       animation.current?.cancel();
       animation.current = null;
       unlockBodyScroll();
