@@ -19,7 +19,16 @@ import type { Repository, Snapshot } from './types';
  * index in Postgres and a function call (domain/dedupe.ts) here.
  */
 
-const USER_ID = 'demo-user';
+/**
+ * This class serves two different roles under one implementation: the seeded demo (a
+ * throwaway collection that never leaves the tab), and the local half of
+ * `OfflineRepository` — which is where every row Anabel ever creates actually gets
+ * stamped, since her writes go through `local.addPolish()` before syncing up. Those two
+ * roles need different `user_id` values, so it is a constructor parameter rather than a
+ * hardcoded constant: a real collection permanently labeled "demo-user" in its own
+ * backing store would be a wrong, confusing fact baked into her data forever.
+ */
+const DEMO_USER_ID = 'demo-user';
 
 function now(): string {
   return new Date().toISOString();
@@ -39,9 +48,11 @@ function newId(): string {
 
 export class InMemoryRepository implements Repository {
   private data: Snapshot;
+  private readonly userId: string;
 
-  constructor(initial: Snapshot = buildSeed()) {
+  constructor(initial: Snapshot = buildSeed(), userId: string = DEMO_USER_ID) {
     this.data = initial;
+    this.userId = userId;
   }
 
   async load(): Promise<Snapshot> {
@@ -54,7 +65,7 @@ export class InMemoryRepository implements Repository {
     const timestamp = now();
     const row: Polish = {
       id: newId(),
-      user_id: USER_ID,
+      user_id: this.userId,
       brand: input.brand,
       name: input.name,
       color: input.color,
@@ -91,7 +102,7 @@ export class InMemoryRepository implements Repository {
     const timestamp = now();
     const row: Wear = {
       id: newId(),
-      user_id: USER_ID,
+      user_id: this.userId,
       polish_id: input.polish_id,
       worn_on: input.worn_on,
       rating: input.rating,
@@ -125,7 +136,7 @@ export class InMemoryRepository implements Repository {
     const timestamp = now();
     const row: WishlistItem = {
       id: newId(),
-      user_id: USER_ID,
+      user_id: this.userId,
       brand: input.brand,
       name: input.name,
       color: input.color,

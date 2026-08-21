@@ -9,6 +9,7 @@ vi.mock('idb-keyval', () => ({
 
 const { OfflineRepository } = await import('../repositories/offline');
 const { GitHubApiError } = await import('../github/api');
+const { USER_ID } = await import('../repositories/github');
 type Snapshot = import('../repositories/types').Snapshot;
 
 /**
@@ -111,6 +112,23 @@ describe('working offline', () => {
 
     expect(remote.snapshot.polish.map((p) => p.name).sort()).toEqual(['One', 'Two']);
     expect(repo.getState()).toMatchObject({ status: 'synced', pending: false });
+  });
+});
+
+describe('rows written through the offline layer are stamped with the real identity', () => {
+  it('does not carry the "demo-user" id meant for the seeded demo', async () => {
+    // Regression: InMemoryRepository is reused as OfflineRepository's local half, and
+    // every real write she ever makes goes through IT first (see addPolish etc. below) —
+    // so it defaulting to the demo-mode id would permanently mislabel her actual data.
+    // Caught by inspecting a real save against the live site, not by a prior test.
+    const remote = new FakeRemote();
+    const repo = new OfflineRepository(remote, empty());
+    await repo.load();
+
+    const added = await repo.addPolish({ ...POLISH });
+
+    expect(added.user_id).toBe(USER_ID);
+    expect(added.user_id).not.toBe('demo-user');
   });
 });
 

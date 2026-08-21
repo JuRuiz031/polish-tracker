@@ -4,6 +4,7 @@ import type { IsoDate, Polish, Wear, WishlistItem } from '../../domain/types';
 import type { PolishInput, WearInput, WishlistInput } from '../../domain/schema';
 import { GitHubApiError } from '../github/api';
 import { InMemoryRepository } from './memory';
+import { USER_ID } from './github';
 import type { Repository, Snapshot } from './types';
 
 /**
@@ -82,7 +83,7 @@ export class OfflineRepository implements Repository {
   constructor(remote: SyncTarget, cached: Snapshot = emptySnapshot()) {
     this.remote = remote;
     this.snapshot = cached;
-    this.local = new InMemoryRepository(cached);
+    this.local = new InMemoryRepository(cached, USER_ID);
   }
 
   /** Build one with whatever this device already had cached. */
@@ -194,7 +195,7 @@ export class OfflineRepository implements Repository {
 
   private adopt(snapshot: Snapshot): void {
     this.snapshot = snapshot;
-    this.local = new InMemoryRepository(snapshot);
+    this.local = new InMemoryRepository(snapshot, USER_ID);
   }
 
   /**

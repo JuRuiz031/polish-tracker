@@ -20,7 +20,10 @@ import type { Repository, Snapshot } from './types';
  * enough to matter, shard by table behind this same interface and no screen changes.
  */
 
-const USER_ID = 'owner';
+/** Exported so `OfflineRepository` can stamp its local (InMemoryRepository) half with
+ * the same identity, since real writes are made there before ever reaching this class —
+ * see the comment on `DEMO_USER_ID` in memory.ts. */
+export const USER_ID = 'owner';
 
 /** Enough attempts to survive the other device saving at the same moment. */
 const MAX_ATTEMPTS = 3;
