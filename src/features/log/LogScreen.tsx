@@ -95,11 +95,8 @@ export function LogScreen() {
       <section className="summary" aria-label="Collection summary">
         <SummaryStat
           label="Polishes"
-          value={
-            summary.archived > 0
-              ? `${summary.total_polishes} (${summary.archived} archived)`
-              : String(summary.total_polishes)
-          }
+          value={String(summary.total_polishes)}
+          note={summary.archived > 0 ? `${summary.archived} archived` : undefined}
         />
         <SummaryStat label="Never worn" value={String(summary.never_worn)} />
         <SummaryStat label="Manicures" value={String(summary.manicures_logged)} />
@@ -250,11 +247,23 @@ export function LogScreen() {
   );
 }
 
-function SummaryStat({ label, value }: { label: string; value: string }) {
+function SummaryStat({
+  label,
+  value,
+  note,
+}: {
+  label: string;
+  value: string;
+  /** Qualifier on the figure — "1 archived". Kept out of `value` so it cannot wrap it. */
+  note?: string;
+}) {
   return (
     <div className="summary__stat">
       <span className="summary__value">{value}</span>
-      <span className="summary__label">{label}</span>
+      <span className="summary__label">
+        {label}
+        {note && <span className="summary__note"> · {note}</span>}
+      </span>
     </div>
   );
 }

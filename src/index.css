@@ -907,6 +907,33 @@ a {
   border-radius: var(--radius-md);
 }
 
+/*
+ * Date inputs on iOS Safari, which do not behave like any other control here.
+ *
+ * WebKit gives `input[type="date"]` an intrinsic width derived from the locale's date
+ * format and treats it as a floor, so `width: 100%` does not shrink it: on a phone the
+ * field rendered wider than every sibling and ran off the right edge of the sheet. Because
+ * `.sheet__body` scrolls (and an `overflow-y: auto` box computes `overflow-x` to `auto`
+ * too), that one over-wide field made the whole form horizontally scrollable, which is why
+ * the *other* fields looked misaligned as well — nothing was wrong with them, the form
+ * they sat in was simply wider than the screen.
+ *
+ * `appearance: none` drops the intrinsic sizing, `min-width: 0` lets it shrink to the
+ * column, and the pseudo-element resets WebKit's centred value text to match the
+ * left-aligned text of every other control. The native picker is unaffected.
+ */
+.control[type='date'] {
+  appearance: none;
+  -webkit-appearance: none;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.control[type='date']::-webkit-date-and-time-value {
+  text-align: left;
+  margin: 0;
+}
+
 .control--textarea {
   min-height: 5rem;
   resize: vertical;
@@ -1424,6 +1451,23 @@ a {
   color: var(--text-display);
   font-weight: var(--weight-bold);
   line-height: var(--leading-tight);
+}
+
+/*
+ * The qualifier on the headline figure — "· 1 archived", appended to the label.
+ *
+ * It used to live inside .summary__value, which made that one tile a long display-face
+ * string in a half-width box: it broke wherever it ran out of room, mid-parenthetical
+ * ("26 (1" / "archived)"). Moving it to the label keeps the value a clean number and keeps
+ * every tile two lines, so the grid still reads as a row of matching tiles.
+ *
+ * `nowrap` on the qualifier alone means that if the line does have to break, it breaks at
+ * the separator — "Polishes ·" / "1 archived" — never through the middle of the phrase.
+ * No size or colour of its own: a third weight in a tile this small reads as a third
+ * competing label rather than as a footnote.
+ */
+.summary__note {
+  white-space: nowrap;
 }
 
 .summary__label {
